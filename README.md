@@ -68,7 +68,7 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 ## Installation
 
 ```bash
-git clone https://github.com/kdursunnizam-art/cryopsarc-mcp-server.git
+git clone https://github.com/kdursunnizam-art/cryosparc-mcp-server.git
 cd ~/cryosparc-mcp-server
 python3 -m venv .venv
 source .venv/bin/activate
@@ -167,7 +167,7 @@ Then in Claude Code:
 From your terminal, run this command:
 
 ```bash
-openclaw mcp add --transport stdio --scope user cryosparc --cmd /path/to/cryosparc-mcp-server/start.server.sh 
+openclaw mcp add --transport stdio --scope user cryosparc --cmd /path/to/cryosparc-mcp-server/start_server.sh 
 ```
 
 Verify it's registered:
@@ -175,24 +175,26 @@ Verify it's registered:
 ```bash
 openclaw mcp list
 ```
-or edit manually claude_desktop_config.json (mandatory for Claude Dektop and only in stdio)
+
+edit manually claude_desktop_config.json (mandatory for Claude Dektop and only in stdio)
 
 claude_desktop_config.json
 Windows : %APPDATA%\Claude\claude_desktop_config.json
 macOS : ~/Library/Application Support/Claude/claude_desktop_config.json
+
 ```json
 {
   "mcpServers": {
     "cryosparc": {
       "command": "/path/to/start_server.sh",
-      "args": [],
+      "args": []
     }
   }
 }
 ```
 
 
-#### For http (remote use)
+#### For http (remote use) (EXPERIMENTAL For Claude Desktop)
 
 Start the server in HTTP mode:
 
@@ -250,7 +252,7 @@ cryosparc-mcp-server/
 ├── start_server.sh          # Launcher (activates venv + starts server)
 ├── pyproject.toml
 ├── README.md
-├── .env.example             # Template for credentials
+├── .env.example             # Template for credentials change the name after edition
 └── src/cryosparc_mcp/
     ├── __init__.py
     ├── __main__.py
@@ -263,7 +265,7 @@ cryosparc-mcp-server/
 ## Compatibility
 
 - **CryoSPARC**: v4.7.1 (tested; may work with other v4.x but not v5.x)
-- **cryosparc-tools**: vv4.7.1
+- **cryosparc-tools**: v4.7.1
 - **Python**: 3.10+
 
 ## License
