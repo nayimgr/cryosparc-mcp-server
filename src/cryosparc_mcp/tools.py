@@ -230,7 +230,7 @@ def register_all_tools(mcp: FastMCP) -> None:
         try:
             cs = get_client()
             cs.test_connection()
-            return to_json({"connected": True, "base_url": cs.base_url, "user": str(cs.user)})
+            return to_json({"connected": True, "user_id": str(cs.user_id)})
         except Exception as e:
             return fmt_error(e)
 
@@ -239,9 +239,8 @@ def register_all_tools(mcp: FastMCP) -> None:
         """List all CryoSPARC projects accessible to the current user."""
         try:
             cs = get_client()
-            # cs.find_projects() returns an iterator of ProjectController
-            projects = list(cs.find_projects())
-            items = [{"uid": p.uid, "title": p.title, "desc": p.desc} for p in projects]
+            projects = cs.cli.list_projects()
+            items = [{"uid": p["uid"], "title": p.get("title", ""), "desc": p.get("description", "")} for p in projects]
             return to_json({"count": len(items), "projects": items})
         except Exception as e:
             return fmt_error(e)
@@ -252,7 +251,7 @@ def register_all_tools(mcp: FastMCP) -> None:
         try:
             cs = get_client()
             p = cs.find_project(params.project_uid)
-            return to_json({"uid": p.uid, "title": p.title, "desc": p.desc, "dir": str(p.dir)})
+            return to_json({"uid": p.uid, "title": p.doc.get("title", ""), "desc": p.doc.get("description", ""), "dir": str(p.dir)})
         except Exception as e:
             return fmt_error(e)
 
@@ -261,10 +260,8 @@ def register_all_tools(mcp: FastMCP) -> None:
         """List workspaces in a project."""
         try:
             cs = get_client()
-            project = cs.find_project(params.project_uid)
-            # project.find_workspaces() returns iterator of WorkspaceController
-            workspaces = list(project.find_workspaces())
-            items = [{"uid": w.uid, "title": w.title, "desc": w.desc} for w in workspaces]
+            workspaces = cs.cli.list_workspaces(project_uid=params.project_uid)
+            items = [{"uid": w["uid"], "title": w.get("title", ""), "desc": w.get("description", "")} for w in workspaces]
             return to_json({"count": len(items), "workspaces": items})
         except Exception as e:
             return fmt_error(e)
@@ -277,15 +274,12 @@ def register_all_tools(mcp: FastMCP) -> None:
         """
         try:
             cs = get_client()
-            project = cs.find_project(params.project_uid)
-            # project.find_jobs(workspace_uid=..., type=...) — documented signature
-            kwargs: dict = {}
+            jobs = cs.cli.list_jobs(params.project_uid)
             if params.workspace_uid:
-                kwargs["workspace_uid"] = params.workspace_uid
+                jobs = [j for j in jobs if params.workspace_uid in j.get("workspace_uids", [])]
             if params.type:
-                kwargs["type"] = params.type
-            jobs = list(project.find_jobs(**kwargs))
-            items = [{"uid": j.uid, "type": j.type, "title": j.title, "status": j.status} for j in jobs]
+                jobs = [j for j in jobs if j.get("job_type") == params.type]
+            items = [{"uid": j["uid"], "type": j.get("job_type", ""), "title": j.get("title", ""), "status": j.get("status", "")} for j in jobs]
             return to_json({"count": len(items), "jobs": items})
         except Exception as e:
             return fmt_error(e)
@@ -297,12 +291,18 @@ def register_all_tools(mcp: FastMCP) -> None:
             cs = get_client()
             project = cs.find_project(params.project_uid)
             j = project.find_job(params.job_uid)
+            # Extract input slot names from input_slot_groups
+            input_names = [s.get("name", "") for g in (j.doc.get("input_slot_groups") or []) for s in g.get("slots", [])]
+            # Extract output names from output_result_groups
+            output_names = [g.get("name", "") for g in (j.doc.get("output_result_groups") or [])]
+            # Extract params from params_base
+            params_base = j.doc.get("params_base") or {}
             info = {
-                "uid": j.uid, "type": j.type, "title": j.title,
-                "desc": j.desc, "status": j.status,
-                "params": dict(j.params) if j.params else {},
-                "inputs": list(j.inputs.keys()) if j.inputs else [],
-                "outputs": list(j.outputs.keys()) if j.outputs else [],
+                "uid": j.uid, "type": j.type, "title": j.doc.get("title", ""),
+                "desc": j.doc.get("description", ""), "status": j.status,
+                "params": {k: v.get("value") if isinstance(v, dict) else v for k, v in params_base.items()},
+                "inputs": input_names,
+                "outputs": output_names,
             }
             return to_json(info)
         except Exception as e:
@@ -332,9 +332,11 @@ def register_all_tools(mcp: FastMCP) -> None:
                     })
                 return to_json({"job_uid": params.job_uid, "spec_type": "params", "params": param_list})
             elif params.spec_type == "inputs":
-                return to_json({"job_uid": params.job_uid, "spec_type": "inputs", "inputs": list(j.inputs.keys()) if j.inputs else []})
+                input_names = [s.get("name", "") for g in (j.doc.get("input_slot_groups") or []) for s in g.get("slots", [])]
+                return to_json({"job_uid": params.job_uid, "spec_type": "inputs", "inputs": input_names})
             elif params.spec_type == "outputs":
-                return to_json({"job_uid": params.job_uid, "spec_type": "outputs", "outputs": list(j.outputs.keys()) if j.outputs else []})
+                output_names = [g.get("name", "") for g in (j.doc.get("output_result_groups") or [])]
+                return to_json({"job_uid": params.job_uid, "spec_type": "outputs", "outputs": output_names})
             return to_json({"error": f"Unknown spec_type: {params.spec_type}"})
         except Exception as e:
             return fmt_error(e)

@@ -1,6 +1,6 @@
-# CryoSPARC MCP Server
+# CryoSPARC MCP Server – CryoSPARC v4.7.1 Edition
 
-MCP server for **CryoSPARC v5** — lets Claude Code (or any MCP client) control a CryoSPARC instance through `cryosparc-tools`.
+MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control a CryoSPARC instance through `cryosparc-tools` (v4.7.1).
 
 ```
 ┌─────────────┐     stdio / HTTP      ┌──────────────────┐     REST API     ┌──────────────┐
@@ -79,18 +79,23 @@ chmod +x start_server.sh
 > **Note:** `pip install -e .` installs `cryosparc-tools`, which requires a C compiler.
 > If you get a build error: `sudo apt install build-essential python3-dev`
 
-### CryoSPARC authentication (one-time setup)
+### CryoSPARC Authentication (v4.7.1)
 
-**Option A Token login (recommended for v5):**
+This server works with CryoSPARC v4.7.1 using host + base_port + email/password + license.
+Create a .env file in the project root (or set environment variables):
 
 ```bash
-source .venv/bin/activate
-python -m cryosparc.tools login --url http://localhost:39000
+# .env file
+CRYOSPARC_HOST=your.cryosparc.host
+CRYOSPARC_BASE_PORT=61000
+CRYOSPARC_EMAIL=your_email@example.com
+CRYOSPARC_PASSWORD=your_password
+CRYOSPARC_LICENSE=your-license-uuid
+CRYOSPARC_TIMEOUT=300
 ```
 
-Enter your CryoSPARC email and password when prompted. The token is saved locally (expires in 2 weeks). After this, only `CRYOSPARC_BASE_URL` is needed no email/password in config.
+The CRYOSPARC_LICENSE is mandatory for v4.7.1. You can find it in your CryoSPARC license file or web UI.
 
-**Option B Email/password via environment variables** 
 
 ## Usage
 
@@ -101,13 +106,12 @@ Enter your CryoSPARC email and password when prompted. The token is saved locall
 From your terminal, run this command:
 
 ```bash
-claude mcp add-json cryosparc '{"command":"/path/to/cryosparc-mcp-server/start_server.sh","args":[],"env":{"CRYOSPARC_BASE_URL":"http://localhost:39000"}}' --scope user
+claude mcp add-json cryosparc '{"command":"/path/to/cryosparc-mcp-server/start_server.sh","args":[],"env":{}}' --scope user
 ```
 
-If you did NOT do token login (Option A), pass email/password too:
+credentials are read from .env.
 
-```bash
-claude mcp add-json cryosparc '{"command":"/path/to/cryosparc-mcp-server/start_server.sh","args":[],"env":{"CRYOSPARC_BASE_URL":"http://localhost:39000","CRYOSPARC_EMAIL":"you@example.com","CRYOSPARC_PASSWORD":"yourpassword"}}' --scope user
+
 ```
 
 Verify it's registered:
@@ -129,15 +133,10 @@ claude mcp remove cryosparc
 ```bash
 cd /path/to/cryosparc-mcp-server
 source .venv/bin/activate
-export CRYOSPARC_BASE_URL=http://localhost:39000
-export CRYOSPARC_EMAIL=you@example.com
-export CRYOSPARC_PASSWORD=yourpassword
 ./start_server.sh --transport streamable-http --port 8200 --host 0.0.0.0 
 ```
 
-Keep this terminal open. (It is preferable to change --host 0.0.0.0 to your own IP address)
-
-> If you already did token login, you can skip the EMAIL/PASSWORD exports.
+Keep this terminal open. (It is preferable to change --host 0.0.0.0 to your own IP address) The server will read credentials from .env
 
 2. Add the server to Claude Code
 
@@ -171,7 +170,7 @@ Then in Claude Code:
 From your terminal, run this command:
 
 ```bash
-openclaw mcp add --transport stdio --scope user cryosparc --cmd /path/to/cryosparc-mcp-server/server.py --env CRYOSPARC_BASE_URL="http://localhost:39000"
+openclaw mcp add --transport stdio --scope user cryosparc --cmd /path/to/cryosparc-mcp-server/start.server.sh 
 ```
 
 Verify it's registered:
@@ -188,11 +187,8 @@ macOS : ~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
     "cryosparc": {
-      "command": "python3",
-      "args": ["/path/to/cryosparc-mcp-server/server.py"],
-      "env": {
-        "CRYOSPARC_BASE_URL": "http://localhost:39000"
-      }
+      "command": "/path/to/start_server.sh",
+      "args": [],
     }
   }
 }
@@ -206,9 +202,6 @@ Start the server in HTTP mode:
 ```bash
 cd /path/to/cryosparc-mcp-server
 source .venv/bin/activate
-export CRYOSPARC_BASE_URL=http://localhost:39000
-export CRYOSPARC_EMAIL=you@example.com
-export CRYOSPARC_PASSWORD=yourpassword
 ./start_server.sh --transport streamable-http --port 8200 --host 0.0.0.0
 ```
 Keep this terminal open. (It is preferable to change --host 0.0.0.0 to your own IP address)
@@ -260,10 +253,11 @@ cryosparc-mcp-server/
 ├── start_server.sh          # Launcher (activates venv + starts server)
 ├── pyproject.toml
 ├── README.md
+├── .env.example             # Template for credentials
 └── src/cryosparc_mcp/
     ├── __init__.py
     ├── __main__.py
-    ├── connection.py        # CryoSPARC connection (v5 token + legacy)
+    ├── connection.py        # CryoSPARC connection (v4.7.1)
     ├── helpers.py           # JSON serialisation, error formatting
     ├── server.py            # FastMCP server + lifespan
     └── tools.py             # All 34 MCP tools
@@ -271,8 +265,8 @@ cryosparc-mcp-server/
 
 ## Compatibility
 
-- **CryoSPARC**: v5 recommended for token login
-- **cryosparc-tools**: v5.0+
+- **CryoSPARC**: v4.7.1 (tested; may work with other v4.x but not v5.x)
+- **cryosparc-tools**: vv4.7.1
 - **Python**: 3.10+
 
 ## License

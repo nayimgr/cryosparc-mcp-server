@@ -23,7 +23,9 @@ async def app_lifespan(server: FastMCP) -> AsyncIterator[dict]:
     """Startup: try to connect to CryoSPARC. Shutdown: reset client."""
     try:
         cs = get_client()
-        print(f"[cryosparc-mcp] Connected to CryoSPARC at {cs.base_url}", file=sys.stderr)
+        # On utilise base_url si disponible, sinon on affiche host/port
+        url = getattr(cs, 'base_url', None) or f"{getattr(cs, 'host', 'unknown')}:{getattr(cs, 'base_port', 'unknown')}"
+        print(f"[cryosparc-mcp] Connected to CryoSPARC at {url}", file=sys.stderr)
     except Exception as exc:
         print(
             f"[cryosparc-mcp] WARNING: {exc}\n"
