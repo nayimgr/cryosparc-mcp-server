@@ -234,9 +234,6 @@ Or configure manually in `openclaw.json` (both stdio and http):
 }
 ```
 
-
-Claude Code sees both `relion_*` and `cryosparc_*` tools simultaneously.
-
 ## Project Structure
 
 ```
