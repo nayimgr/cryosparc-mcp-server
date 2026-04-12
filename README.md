@@ -164,7 +164,7 @@ Then in Claude Code:
 
 ```
 
-### With OpenClaw / NemoClaw / HERMES Agent etc...
+### With OpenClaw and Claude Desktop
 
 #### For stdio (local use)
 
@@ -179,6 +179,27 @@ Verify it's registered:
 ```bash
 openclaw mcp list
 ```
+or edit manually claude_desktop_config.json (mandatory for Claude Dektop and only in stdio)
+
+claude_desktop_config.json
+Windows : %APPDATA%\Claude\claude_desktop_config.json
+macOS : ~/Library/Application Support/Claude/claude_desktop_config.json
+```json
+{
+  "mcpServers": {
+    "cryosparc": {
+      "command": "python3",
+      "args": ["/path/to/cryosparc-mcp-server/server.py"],
+      "env": {
+        "CRYOSPARC_BASE_URL": "http://localhost:39000",
+        "CRYOSPARC_EMAIL": "",
+        "CRYOSPARC_PASSWORD": ""
+      }
+    }
+  }
+}
+```
+
 
 #### For http (remote use)
 
