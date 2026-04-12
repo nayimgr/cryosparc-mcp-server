@@ -239,7 +239,6 @@ Or configure manually in `openclaw.json` (both stdio and http):
 ```
 cryosparc-mcp-server/
 ├── start_server.sh          # Launcher (activates venv + starts server)
-├── .env.example             # Config template (HTTP mode reference)
 ├── pyproject.toml
 ├── README.md
 └── src/cryosparc_mcp/
