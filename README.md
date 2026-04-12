@@ -171,7 +171,7 @@ Then in Claude Code:
 From your terminal, run this command:
 
 ```bash
-openclaw mcp add --transport stdio --scope user cryosparc --cmd /path/to/cryosparc-mcp-server/start_server.sh --env CRYOSPARC_BASE_URL="http://localhost:39000"
+openclaw mcp add --transport stdio --scope user cryosparc --cmd /path/to/cryosparc-mcp-server/server.py --env CRYOSPARC_BASE_URL="http://localhost:39000"
 ```
 
 Verify it's registered:
@@ -191,9 +191,7 @@ macOS : ~/Library/Application Support/Claude/claude_desktop_config.json
       "command": "python3",
       "args": ["/path/to/cryosparc-mcp-server/server.py"],
       "env": {
-        "CRYOSPARC_BASE_URL": "http://localhost:39000",
-        "CRYOSPARC_EMAIL": "",
-        "CRYOSPARC_PASSWORD": ""
+        "CRYOSPARC_BASE_URL": "http://localhost:39000"
       }
     }
   }
