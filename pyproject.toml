@@ -1,0 +1,20 @@
+[project]
+name = "cryosparc-mcp-server"
+version = "0.2.0"
+description = "MCP server for CryoSPARC v5 cryo-EM software — powered by cryosparc-tools"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.2.0",
+    "cryosparc-tools>=5.0.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+where = ["src"]
