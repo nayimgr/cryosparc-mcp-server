@@ -122,7 +122,7 @@ To remove and reconfigure:
 claude mcp remove cryosparc
 ```
 
-#### For http use (remote)
+#### For http use (remote) EXPERIMENTAL
 
 1. Start the server manually in a terminal
 
@@ -234,7 +234,7 @@ Or configure manually in `openclaw.json` (both stdio and http):
           {
             "name": "cryosparc-stdio",
             "transport": "stdio",
-            "command": "/path/to/cryosparc-mcp-server/start_server.sh",
+            "command": "/path/to/cryosparc-mcp-server/server.py",
             "args": [],
             "env": {
               "CRYOSPARC_BASE_URL": "http://localhost:39000"
