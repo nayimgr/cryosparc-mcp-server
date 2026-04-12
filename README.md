@@ -111,9 +111,6 @@ claude mcp add-json cryosparc '{"command":"/path/to/cryosparc-mcp-server/start_s
 
 credentials are read from .env.
 
-
-```
-
 Verify it's registered:
 
 ```bash

@@ -1,19 +1,12 @@
-"""CryoSPARC connection manager.
+"""CryoSPARC connection manager — optimised for cryosparc-tools v4.7.1.
 
-v5 authentication flow (from tools.cryosparc.com/intro.html):
-  1. User runs: python -m cryosparc.tools login --url <URL>
-     This saves a token locally that expires in two weeks.
-  2. Scripts then use: CryoSPARC("<URL>")  — no email/password needed.
-
-Legacy fallback:
-  If the token is not available, email/password are passed directly.
+Authentication uses host + base_port + email + password + license (v4.7 format).
 """
 from __future__ import annotations
 
 import os
 import sys
 from pathlib import Path
-from typing import Optional
 
 from dotenv import load_dotenv
 
@@ -36,15 +29,18 @@ def get_client():
 
     Supports both v4.7.1 (host/base_port) and v5.0+ (base_url) APIs.
 
-    Authentication priority:
-      1. Email/password from environment variables (works with both versions)
-      2. Token-based (from `python -m cryosparc.tools login`) — v5 only
+    v4.7.1 environment variables (recommended):
+      CRYOSPARC_HOST        — hostname, e.g. maws06.mpie.de
+      CRYOSPARC_BASE_PORT   — base port, e.g. 61000
+      CRYOSPARC_EMAIL       — login email
+      CRYOSPARC_PASSWORD    — login password
+      CRYOSPARC_LICENSE     — license ID
+      CRYOSPARC_TIMEOUT     — optional timeout in seconds (default 300)
 
-    Returns:
-        CryoSPARC: connected client instance
-
-    Raises:
-        RuntimeError: if connection fails
+    v5.0+ environment variables (fallback):
+      CRYOSPARC_BASE_URL    — full URL, e.g. http://localhost:39000
+      CRYOSPARC_EMAIL       — login email
+      CRYOSPARC_PASSWORD    — login password
     """
     global _client
     if _client is not None:
@@ -54,18 +50,16 @@ def get_client():
 
     from cryosparc.tools import CryoSPARC
 
-    # Support both v4.7.1 (host/base_port) and v5.0+ (base_url) formats
-    base_url = os.getenv("CRYOSPARC_BASE_URL", "http://localhost:39000")
-    host = os.getenv("CRYOSPARC_HOST", "").strip()
+    host      = os.getenv("CRYOSPARC_HOST", "").strip()
     base_port = os.getenv("CRYOSPARC_BASE_PORT", "").strip()
-
-    email = os.getenv("CRYOSPARC_EMAIL", "").strip()
-    password = os.getenv("CRYOSPARC_PASSWORD", "").strip()
-    timeout = int(os.getenv("CRYOSPARC_TIMEOUT", "300"))
-    license_id = os.getenv("CRYOSPARC_LICENSE", "15986a3e-b020-11f0-9649-436da5d3213b")
+    base_url  = os.getenv("CRYOSPARC_BASE_URL", "http://localhost:39000")
+    email     = os.getenv("CRYOSPARC_EMAIL", "").strip()
+    password  = os.getenv("CRYOSPARC_PASSWORD", "").strip()
+    license_id = os.getenv("CRYOSPARC_LICENSE", "").strip()
+    timeout   = int(os.getenv("CRYOSPARC_TIMEOUT", "300"))
 
     try:
-        # Try v4.7.1 format first (host + base_port + email/password)
+        # v4.7.1 format — host + base_port + email + password + license
         if host and base_port and email and password:
             _client = CryoSPARC(
                 host=host,
@@ -75,7 +69,7 @@ def get_client():
                 license=license_id,
                 timeout=timeout,
             )
-        # Fallback to v5.0+ format (base_url)
+        # v5.0+ format — base_url + email + password
         elif email and password:
             _client = CryoSPARC(
                 base_url=base_url,
@@ -83,7 +77,7 @@ def get_client():
                 password=password,
                 timeout=timeout,
             )
-        # v5.0 token-based (no email/password needed)
+        # v5.0 token-based (no credentials needed)
         else:
             _client = CryoSPARC(
                 base_url=base_url,
@@ -92,9 +86,9 @@ def get_client():
     except Exception as exc:
         raise RuntimeError(
             f"Could not connect to CryoSPARC: {exc}\n"
-            "Please verify environment variables:\n"
-            "  For v4.7.1: CRYOSPARC_HOST, CRYOSPARC_BASE_PORT, CRYOSPARC_EMAIL, CRYOSPARC_PASSWORD, CRYOSPARC_LICENSE\n"
-            "  For v5.0+: CRYOSPARC_BASE_URL and either token (login) or email/password"
+            "Check your .env file — for v4.7.1 you need:\n"
+            "  CRYOSPARC_HOST, CRYOSPARC_BASE_PORT, CRYOSPARC_EMAIL,\n"
+            "  CRYOSPARC_PASSWORD, CRYOSPARC_LICENSE"
         ) from exc
 
     return _client
