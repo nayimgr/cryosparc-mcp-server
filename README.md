@@ -9,7 +9,8 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 └─────────────┘                        └──────────────────┘                  └──────────────┘
 ```
 
-## 34 MCP Tools
+
+## 38 MCP Tools
 
 ### Navigation (read-only)
 | Tool | Description |
@@ -40,13 +41,15 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 | `cryosparc_kill_job` | Kill a running job |
 | `cryosparc_clear_job` | Reset a job to 'building' status |
 
-### Data Inspection
+### Data Inspection & Download
 | Tool | Description |
 |------|-------------|
 | `cryosparc_dataset_summary` | Get dataset schema (columns, types, row count) |
 | `cryosparc_load_output` | Load paginated data with slot filtering |
 | `cryosparc_list_files` | List files in a project or job directory |
 | `cryosparc_list_assets` | List image/plot assets for a job |
+| `cryosparc_download_mrc` | Download a .mrc file as NumPy array (header + shape) |
+| `cryosparc_download_file` | Download any file from the project to local disk |
 
 ### External Jobs
 | Tool | Description |
@@ -59,12 +62,25 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 | `cryosparc_external_stop` | Mark as completed |
 | `cryosparc_external_load_input` | Load data from a connected input |
 
-### Workflow Helpers
+### Workflow & Parameter Helpers
 | Tool | Description |
 |------|-------------|
 | `cryosparc_workflow_import_movies` | Import movies in one step |
 | `cryosparc_workflow_preprocess` | Motion Correction + CTF Estimation |
-| `cryosparc_generate_live_report` | PDF report on all completed job inside a workspace saved in /tmp/cryosparc_report_<project_uid>_<workspace_uid>.pdf |
+| `cryosparc_parse_workflow` | Parse a CryoSPARC workflow JSON and extract its structure |
+| `cryosparc_suggest_params` | Retrieve reference parameters for common target types (e.g., GPCR) |
+| `cryosparc_generate_live_report` | PDF report on all completed jobs inside a workspace saved in `/tmp/cryosparc_report_<project_uid>_<workspace_uid>.pdf` |
+
+## Installation
+
+```bash
+git clone https://github.com/kdursunnizam-art/cryosparc-mcp-server.git
+cd ~/cryosparc-mcp-server
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+pip install matplotlib numpy
+chmod +x start_server.sh
 
 ## Installation
 
