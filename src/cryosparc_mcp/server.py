@@ -43,7 +43,9 @@ def create_server() -> FastMCP:
     mcp = FastMCP("cryosparc_mcp", lifespan=app_lifespan)
 
     from .tools import register_all_tools
+    from .tools_report import register_report_tools
     register_all_tools(mcp)
+    register_report_tools(mcp)
 
     return mcp
 

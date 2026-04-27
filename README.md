@@ -64,6 +64,7 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 |------|-------------|
 | `cryosparc_workflow_import_movies` | Import movies in one step |
 | `cryosparc_workflow_preprocess` | Motion Correction + CTF Estimation |
+| `cryosparc_generate_live_report` | PDF report on all completed job inside a workspace saved in /tmp/cryosparc_report_<project_uid>_<workspace_uid>.pdf |
 
 ## Installation
 
@@ -73,6 +74,7 @@ cd ~/cryosparc-mcp-server
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
+pip install matplotlib numpy
 chmod +x start_server.sh
 ```
 
@@ -267,6 +269,8 @@ cryosparc-mcp-server/
 - **CryoSPARC**: v4.7.1 (tested; may work with other v4.x but not v5.x)
 - **cryosparc-tools**: v4.7.1
 - **Python**: 3.10+
+- **matplotlib** 
+- **numpy**
 
 ## License
 
