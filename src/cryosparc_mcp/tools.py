@@ -269,7 +269,8 @@ def register_all_tools(mcp: FastMCP) -> None:
         try:
             cs = get_client()
             cs.test_connection()
-            return to_json({"connected": True, "base_url": cs.base_url, "user": str(cs.user)})
+            url = getattr(cs, "base_url", None) or f"{getattr(cs, 'host', 'unknown')}:{getattr(cs, 'base_port', 'unknown')}"
+            return to_json({"connected": True, "base_url": url, "user": str(getattr(cs, "user", "unknown"))})
         except Exception as e:
             return fmt_error(e)
 
@@ -412,16 +413,32 @@ def register_all_tools(mcp: FastMCP) -> None:
             cs = get_client()
             register = cs.job_register
             items = []
-            for section in register:
-                sec_name = section.get("name", "")
-                if params.category and sec_name != params.category:
-                    continue
-                for jt in section.get("contains", []):
+
+            # Recent cryosparc-tools: job_register is a JobRegister model with a
+            # list of specs. Older versions: an iterable of dict "sections".
+            specs = getattr(register, "specs", None)
+            if specs is not None:
+                for spec in specs:
+                    sec_name = (getattr(spec, "section", None)
+                                or getattr(spec, "category", None) or "")
+                    if params.category and sec_name != params.category:
+                        continue
                     items.append({
-                        "type": jt.get("name", jt.get("type", "unknown")),
-                        "title": jt.get("title", ""),
+                        "type": getattr(spec, "type", None) or getattr(spec, "name", "unknown"),
+                        "title": getattr(spec, "title", ""),
                         "category": sec_name,
                     })
+            else:
+                for section in register:
+                    sec_name = section.get("name", "")
+                    if params.category and sec_name != params.category:
+                        continue
+                    for jt in section.get("contains", []):
+                        items.append({
+                            "type": jt.get("name", jt.get("type", "unknown")),
+                            "title": jt.get("title", ""),
+                            "category": sec_name,
+                        })
             return to_json({"count": len(items), "job_types": items})
         except Exception as e:
             return fmt_error(e)
@@ -532,9 +549,16 @@ def register_all_tools(mcp: FastMCP) -> None:
             project = cs.find_project(params.project_uid)
             job = project.find_job(params.job_uid)
             results = {}
+            errors = {}
             for name, value in params.params.items():
-                results[name] = job.set_param(name, value)
-            return to_json({"results": results})
+                try:
+                    results[name] = job.set_param(name, value)
+                except Exception as pe:
+                    errors[name] = str(pe)
+            out = {"results": results}
+            if errors:
+                out["errors"] = errors
+            return to_json(out)
         except Exception as e:
             return fmt_error(e)
 
@@ -726,7 +750,8 @@ def register_all_tools(mcp: FastMCP) -> None:
                 return to_json({"warning": "Dataset is large; specify 'slots'.", "num_rows": total, "columns": col_names})
             start = min(params.offset, total)
             end = min(start + params.limit, total)
-            rows = [dict(r) for r in list(dset.rows())[start:end]]
+            from itertools import islice
+            rows = [dict(r) for r in islice(dset.rows(), start, end)]
             return to_json({
                 "total_rows": total, "offset": start, "count": len(rows),
                 "has_more": end < total, "next_offset": end if end < total else None,

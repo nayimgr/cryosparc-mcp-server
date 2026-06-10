@@ -10,7 +10,7 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 ```
 
 
-## 38 MCP Tools
+## 39 MCP Tools
 
 ### Navigation (read-only)
 | Tool | Description |
@@ -75,18 +75,7 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 
 ```bash
 git clone https://github.com/kdursunnizam-art/cryosparc-mcp-server.git
-cd ~/cryosparc-mcp-server
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-pip install matplotlib numpy
-chmod +x start_server.sh
-
-## Installation
-
-```bash
-git clone https://github.com/kdursunnizam-art/cryosparc-mcp-server.git
-cd ~/cryosparc-mcp-server
+cd cryosparc-mcp-server
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -142,6 +131,13 @@ claude mcp remove cryosparc
 ```
 
 #### For http use (remote) EXPERIMENTAL
+
+> ⚠️ **Security warning:** The HTTP transport has **no authentication**. Anyone who can
+> reach the port drives your CryoSPARC instance with the credentials stored in `.env`,
+> and can read/write files in your project directories via the data tools. Do **not**
+> bind to `0.0.0.0` on an untrusted network. Prefer binding to `127.0.0.1` and reaching
+> it through an SSH tunnel (`ssh -L 8200:localhost:8200 user@host`), or restrict access
+> with a firewall / reverse proxy that adds authentication.
 
 1. Start the server manually in a terminal
 
@@ -277,7 +273,9 @@ cryosparc-mcp-server/
     ├── connection.py        # CryoSPARC connection (v4.7.1)
     ├── helpers.py           # JSON serialisation, error formatting
     ├── server.py            # FastMCP server + lifespan
-    └── tools.py             # All 34 MCP tools
+    ├── tools.py             # Navigation, job management, data inspection (29 tools)
+    ├── tools_extra.py       # External Jobs + workflow helpers (9 tools)
+    └── tools_report.py      # PDF report generator (1 tool)
 ```
 
 ## Compatibility

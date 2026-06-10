@@ -610,6 +610,7 @@ def _page_picking_scores(pdf, plt, np, job) -> Optional[str]:
 
 def _plot_motion_drift(ax, job, micrograph_uid):
     """Plot drift curve for a specific micrograph from motion correction job."""
+    import numpy as np
     try:
         # Load micrographs data with motion details
         mics = job.load_output("micrographs", slots=["motion"])
@@ -667,20 +668,19 @@ def _plot_ctf_fit(ax, project, ctf_job, micrograph_uid):
         # Let's try to get the list of files
         files = ctf_job.list_files(prefix="ctfestimated/")
         target_file = None
+        uid_str = str(micrograph_uid)
         for f in files:
-            if micrograph_uid in f and f.endswith('.npy'):
+            if uid_str in f and f.endswith('.npy'):
                 target_file = f
                 break
         if target_file is None:
             return False
-        # Download the .npy file
-        data_bytes = ctf_job.download_file(target_file)
-        if data_bytes is None:
-            return False
-        # Load numpy array from bytes
+        # Read the .npy file as a stream (download_file would write it to disk
+        # and return a path, not bytes). job.download() yields a readable response.
         import numpy as np
         import io
-        data = np.load(io.BytesIO(data_bytes), allow_pickle=True).item()
+        with ctf_job.download(target_file) as res:
+            data = np.load(io.BytesIO(res.read()), allow_pickle=True).item()
         # Now data is a dict with keys: freqs_trim, EPA_trim, BGINT, ENVINT, CTF, CC
         freqs = data['freqs_trim']
         power_spectrum = np.cbrt(data['EPA_trim'] - data['BGINT']) + 0.5
@@ -773,11 +773,14 @@ def _page_sample_micrographs(pdf, plt, np, project, picking_job, params, motion_
     n_sample = min(params.num_sample_micrographs, len(mic_uid_list))
     selected_uids = random.sample(mic_uid_list, n_sample)
 
-    # For each selected micrograph, collect its particles
-    mic_particles = {}
-    for uid in selected_uids:
-        rows = [p_row for p_row in particles.rows() if p_row["micrograph_uid"] == uid]
-        mic_particles[uid] = rows
+    # For each selected micrograph, collect its particles in a SINGLE pass over
+    # the particle set (previously this scanned all particles once per micrograph).
+    selected_set = set(selected_uids)
+    mic_particles = {uid: [] for uid in selected_uids}
+    for p_row in particles.rows():
+        uid = p_row["micrograph_uid"]
+        if uid in selected_set:
+            mic_particles[uid].append(p_row)
 
     # Prepare figure: for each micrograph, create a row with three subplots (micrograph, motion, CTF)
     # We'll create one figure per micrograph to keep layout manageable

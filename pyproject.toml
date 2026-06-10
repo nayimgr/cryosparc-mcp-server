@@ -1,7 +1,7 @@
 [project]
 name = "cryosparc-mcp-server"
-version = "0.2.0"
-description = "MCP server for CryoSPARC v5 cryo-EM software — powered by cryosparc-tools"
+version = "0.3.0"
+description = "MCP server for CryoSPARC v4.7.1 cryo-EM software — powered by cryosparc-tools"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
