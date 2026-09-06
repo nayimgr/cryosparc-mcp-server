@@ -1,46 +1,55 @@
-"""CryoSPARC connection manager — optimised for cryosparc-tools v4.7.1.
+"""CryoSPARC connection manager — cryosparc-tools v5.
 
-Authentication uses host + base_port + email + password + license (v4.7 format).
+The v5 ``CryoSPARC`` constructor is::
+
+    CryoSPARC(base_url=None, *, host=None, base_port=None,
+              email=None, password=None, license=None, timeout=300)
+
+Both connection styles are supported:
+
+* host + base_port (+ email/password/license)  — the classic CryoSPARC form
+* base_url (+ email/password)                  — e.g. http://localhost:39000
+
+The license ID is passed through whenever it is set, since instances that
+require it will reject the login without it.
 """
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
+from typing import Any, Optional
 
 from dotenv import load_dotenv
 
-
-# Module-level singleton
-_client = None
+_client: Optional[Any] = None
 
 
 def _load_env() -> None:
-    """Load .env file if it exists."""
-    candidates = [Path.cwd() / ".env", Path(__file__).resolve().parent.parent.parent / ".env"]
+    """Load a .env file from the cwd or the project root, if present."""
+    candidates = [Path.cwd() / ".env",
+                  Path(__file__).resolve().parent.parent.parent / ".env"]
     for p in candidates:
         if p.is_file():
             load_dotenv(p, override=False)
             break
 
 
-def get_client():
-    """Return the shared CryoSPARC client, creating it on first call.
+def _env(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
 
-    Supports both v4.7.1 (host/base_port) and v5.0+ (base_url) APIs.
 
-    v4.7.1 environment variables (recommended):
-      CRYOSPARC_HOST        — hostname, e.g. maws06.mpie.de
-      CRYOSPARC_BASE_PORT   — base port, e.g. 61000
-      CRYOSPARC_EMAIL       — login email
-      CRYOSPARC_PASSWORD    — login password
-      CRYOSPARC_LICENSE     — license ID
-      CRYOSPARC_TIMEOUT     — optional timeout in seconds (default 300)
+def get_client() -> Any:
+    """Return the shared CryoSPARC client, creating it on first use.
 
-    v5.0+ environment variables (fallback):
-      CRYOSPARC_BASE_URL    — full URL, e.g. http://localhost:39000
-      CRYOSPARC_EMAIL       — login email
-      CRYOSPARC_PASSWORD    — login password
+    Environment variables
+    ---------------------
+    CRYOSPARC_HOST       hostname, e.g. ``cryosparc.mylab.org``
+    CRYOSPARC_BASE_PORT  base port, e.g. ``39000``
+    CRYOSPARC_BASE_URL   alternative to host+port, e.g. ``http://localhost:39000``
+    CRYOSPARC_EMAIL      login email
+    CRYOSPARC_PASSWORD   login password
+    CRYOSPARC_LICENSE    license ID (required by most instances)
+    CRYOSPARC_TIMEOUT    request timeout in seconds (default 300)
     """
     global _client
     if _client is not None:
@@ -48,50 +57,76 @@ def get_client():
 
     _load_env()
 
-    from cryosparc.tools import CryoSPARC
+    try:
+        from cryosparc.tools import CryoSPARC
+    except ImportError as exc:  # pragma: no cover - import guard
+        raise RuntimeError(
+            "cryosparc-tools is not installed. Install it with:\n"
+            "  pip install 'cryosparc-tools>=5.0'"
+        ) from exc
 
-    host      = os.getenv("CRYOSPARC_HOST", "").strip()
-    base_port = os.getenv("CRYOSPARC_BASE_PORT", "").strip()
-    base_url  = os.getenv("CRYOSPARC_BASE_URL", "http://localhost:39000")
-    email     = os.getenv("CRYOSPARC_EMAIL", "").strip()
-    password  = os.getenv("CRYOSPARC_PASSWORD", "").strip()
-    license_id = os.getenv("CRYOSPARC_LICENSE", "").strip()
-    timeout   = int(os.getenv("CRYOSPARC_TIMEOUT", "300"))
+    host = _env("CRYOSPARC_HOST")
+    base_port = _env("CRYOSPARC_BASE_PORT")
+    base_url = _env("CRYOSPARC_BASE_URL")
+    email = _env("CRYOSPARC_EMAIL")
+    password = _env("CRYOSPARC_PASSWORD")
+    license_id = _env("CRYOSPARC_LICENSE")
+    try:
+        timeout = int(_env("CRYOSPARC_TIMEOUT", "300") or 300)
+    except ValueError:
+        timeout = 300
+
+    if not (host and base_port) and not base_url:
+        raise RuntimeError(
+            "CryoSPARC connection is not configured. Set either\n"
+            "  CRYOSPARC_HOST + CRYOSPARC_BASE_PORT   (e.g. myhost + 39000)\n"
+            "or\n"
+            "  CRYOSPARC_BASE_URL                     (e.g. http://localhost:39000)\n"
+            "plus CRYOSPARC_EMAIL, CRYOSPARC_PASSWORD and CRYOSPARC_LICENSE."
+        )
+
+    kwargs: dict = {"timeout": timeout}
+    if email:
+        kwargs["email"] = email
+    if password:
+        kwargs["password"] = password
+    if license_id:
+        kwargs["license"] = license_id
+
+    if host and base_port:
+        try:
+            kwargs["base_port"] = int(base_port)
+        except ValueError as exc:
+            raise RuntimeError(
+                f"CRYOSPARC_BASE_PORT must be an integer, got {base_port!r}"
+            ) from exc
+        kwargs["host"] = host
+        described = f"{host}:{base_port}"
+    else:
+        described = base_url
 
     try:
-        # v4.7.1 format — host + base_port + email + password + license
-        if host and base_port and email and password:
-            _client = CryoSPARC(
-                host=host,
-                base_port=int(base_port),
-                email=email,
-                password=password,
-                license=license_id,
-                timeout=timeout,
-            )
-        # v5.0+ format — base_url + email + password
-        elif email and password:
-            _client = CryoSPARC(
-                base_url=base_url,
-                email=email,
-                password=password,
-                timeout=timeout,
-            )
-        # v5.0 token-based (no credentials needed)
-        else:
-            _client = CryoSPARC(
-                base_url=base_url,
-                timeout=timeout,
-            )
+        _client = CryoSPARC(base_url, **kwargs) if not (host and base_port) else CryoSPARC(**kwargs)
     except Exception as exc:
         raise RuntimeError(
-            f"Could not connect to CryoSPARC: {exc}\n"
-            "Check your .env file — for v4.7.1 you need:\n"
-            "  CRYOSPARC_HOST, CRYOSPARC_BASE_PORT, CRYOSPARC_EMAIL,\n"
-            "  CRYOSPARC_PASSWORD, CRYOSPARC_LICENSE"
+            f"Could not connect to CryoSPARC at {described}: {exc}\n"
+            "Check CRYOSPARC_HOST / CRYOSPARC_BASE_PORT (or CRYOSPARC_BASE_URL), "
+            "CRYOSPARC_EMAIL, CRYOSPARC_PASSWORD and CRYOSPARC_LICENSE."
         ) from exc
 
     return _client
+
+
+def describe_client(cs: Any) -> str:
+    """Human-readable description of where a client is pointed."""
+    url = getattr(cs, "base_url", None)
+    if url:
+        return str(url)
+    host = getattr(cs, "host", None)
+    port = getattr(cs, "base_port", None)
+    if host:
+        return f"{host}:{port}" if port else str(host)
+    return "unknown"
 
 
 def reset_client() -> None:

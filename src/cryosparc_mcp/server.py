@@ -1,32 +1,34 @@
-"""CryoSPARC MCP Server — main entry point.
+"""CryoSPARC MCP Server — main entry point (cryosparc-tools v5).
 
 Usage (stdio, default for Claude Code):
     python -m cryosparc_mcp.server
 
-Usage (HTTP for remote access):
-    python -m cryosparc_mcp.server --transport streamable-http --port 8200 --host 0.0.0.0
+Usage (HTTP, local only by default):
+    python -m cryosparc_mcp.server --transport streamable-http --port 8200
+
+The HTTP transport is UNAUTHENTICATED and carries your CryoSPARC credentials,
+so it binds to 127.0.0.1 unless you explicitly pass --host. Prefer an SSH
+tunnel over exposing the port.
 """
 from __future__ import annotations
 
 import argparse
 import sys
-from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from mcp.server.fastmcp import FastMCP
 
-from .connection import get_client, reset_client
+from .connection import describe_client, get_client, reset_client
 
 
 @asynccontextmanager
 async def app_lifespan(server: FastMCP) -> AsyncIterator[dict]:
-    """Startup: try to connect to CryoSPARC. Shutdown: reset client."""
+    """Startup: try to connect to CryoSPARC. Shutdown: reset the client."""
     try:
         cs = get_client()
-        # On utilise base_url si disponible, sinon on affiche host/port
-        url = getattr(cs, 'base_url', None) or f"{getattr(cs, 'host', 'unknown')}:{getattr(cs, 'base_port', 'unknown')}"
-        print(f"[cryosparc-mcp] Connected to CryoSPARC at {url}", file=sys.stderr)
-    except Exception as exc:
+        print(f"[cryosparc-mcp] Connected to CryoSPARC at {describe_client(cs)}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
         print(
             f"[cryosparc-mcp] WARNING: {exc}\n"
             "[cryosparc-mcp] Tools will attempt to connect on first use.",
@@ -45,26 +47,44 @@ def create_server() -> FastMCP:
     from .tools import register_all_tools
     from .tools_extra import register_extra_tools
     from .tools_report import register_report_tools
+    from .tools_results import register_results_tools
+
     register_all_tools(mcp)
     register_extra_tools(mcp)
     register_report_tools(mcp)
+    register_results_tools(mcp)
 
     return mcp
 
 
 def main() -> None:
     """CLI entry point."""
-    parser = argparse.ArgumentParser(description="CryoSPARC MCP Server")
+    parser = argparse.ArgumentParser(description="CryoSPARC MCP Server (cryosparc-tools v5)")
     parser.add_argument("--transport", choices=["stdio", "streamable-http"], default="stdio")
     parser.add_argument("--port", type=int, default=8200)
-    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind to in HTTP mode")
+    parser.add_argument(
+        "--host", type=str, default="127.0.0.1",
+        help="Host to bind in HTTP mode. Defaults to 127.0.0.1; binding to 0.0.0.0 "
+             "exposes an UNAUTHENTICATED server that drives your CryoSPARC instance.",
+    )
     args = parser.parse_args()
 
     server = create_server()
 
     if args.transport == "streamable-http":
+        if args.host not in ("127.0.0.1", "localhost", "::1"):
+            print(
+                f"[cryosparc-mcp] WARNING: binding to {args.host} exposes an "
+                f"UNAUTHENTICATED server that can drive CryoSPARC with the credentials "
+                f"in your .env. Use a firewall or an SSH tunnel instead.",
+                file=sys.stderr, flush=True,
+            )
+        # FastMCP reads host/port from its settings object; passing them to run()
+        # raises TypeError (run only accepts transport and mount_path).
+        server.settings.host = args.host
+        server.settings.port = args.port
         print(f"[cryosparc-mcp] HTTP mode on {args.host}:{args.port}", file=sys.stderr)
-        server.run(transport="streamable-http", host=args.host, port=args.port)
+        server.run(transport="streamable-http")
     else:
         server.run(transport="stdio")
 

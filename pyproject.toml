@@ -1,16 +1,24 @@
 [project]
 name = "cryosparc-mcp-server"
-version = "0.3.0"
-description = "MCP server for CryoSPARC v4.7.1 cryo-EM software — powered by cryosparc-tools"
+version = "0.4.0"
+description = "MCP server for CryoSPARC v5 cryo-EM software — powered by cryosparc-tools"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
-    "mcp[cli]>=1.2.0",
-    "cryosparc-tools==4.7.1",
+    # mcp 2.x removed `mcp.server.fastmcp`, which this server imports.
+    "mcp[cli]>=1.26,<2",
+    # This server targets the cryosparc-tools v5 API (find_projects, find_jobs,
+    # job.params/.inputs/.outputs, job_register). Those do not exist in 4.x.
+    "cryosparc-tools>=5.0,<6",
     "pydantic>=2.0",
     "python-dotenv>=1.0.0",
 ]
+
+[project.optional-dependencies]
+# Needed by cryosparc_generate_live_report and cryosparc_render_class_averages.
+report = ["matplotlib>=3.7", "numpy>=1.24", "pillow>=10.0"]
+dev = ["pytest>=7.0"]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

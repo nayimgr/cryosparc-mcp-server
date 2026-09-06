@@ -1,6 +1,6 @@
-# CryoSPARC MCP Server – CryoSPARC v4.7.1 Edition
+# CryoSPARC MCP Server – CryoSPARC v5 Edition
 
-MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control a CryoSPARC instance through `cryosparc-tools` (v4.7.1).
+MCP server for **CryoSPARC v5** lets Claude Code (or any MCP client) control a CryoSPARC instance through `cryosparc-tools` (v5.x).
 
 ```
 ┌─────────────┐     stdio / HTTP      ┌──────────────────┐     REST API     ┌──────────────┐
@@ -10,7 +10,7 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 ```
 
 
-## 39 MCP Tools
+## 41 MCP Tools
 
 ### Navigation (read-only)
 | Tool | Description |
@@ -71,6 +71,12 @@ MCP server for **CryoSPARC v4.7.1** lets Claude Code (or any MCP client) control
 | `cryosparc_suggest_params` | Retrieve reference parameters for common target types (e.g., GPCR) |
 | `cryosparc_generate_live_report` | PDF report on all completed jobs inside a workspace saved in `/tmp/cryosparc_report_<project_uid>_<workspace_uid>.pdf` |
 
+### Results & Decision Tools
+| Tool | Description |
+|------|-------------|
+| `cryosparc_job_results` | Key metrics of a finished job: **per-class particle distribution** (2D/3D), CTF defocus/astigmatism/fit-resolution stats, motion stats, pick scores, particle counts. Use this instead of hand-parsing datasets |
+| `cryosparc_render_class_averages` | Renders 2D class averages as an **inline PNG montage** so a vision-capable agent can see which classes are good |
+
 ## Installation
 
 ```bash
@@ -78,18 +84,17 @@ git clone https://github.com/kdursunnizam-art/cryosparc-mcp-server.git
 cd cryosparc-mcp-server
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
-pip install matplotlib numpy
+pip install -e '.[report]'   # 'report' adds matplotlib/numpy/pillow for the PDF + image tools
 chmod +x start_server.sh
 ```
 
 > **Note:** `pip install -e .` installs `cryosparc-tools`, which requires a C compiler.
 > If you get a build error: `sudo apt install build-essential python3-dev`
 
-### CryoSPARC Authentication (v4.7.1)
+### CryoSPARC Authentication (v5)
 
-This server works with CryoSPARC v4.7.1 using host + base_port + email/password + license.
-Create a .env file in the project root (or set environment variables):
+Create a .env file in the project root (or set environment variables). Use **either**
+`CRYOSPARC_HOST` + `CRYOSPARC_BASE_PORT`, **or** `CRYOSPARC_BASE_URL`:
 
 ```bash
 # .env file
@@ -99,9 +104,12 @@ CRYOSPARC_EMAIL=your_email@example.com
 CRYOSPARC_PASSWORD=your_password
 CRYOSPARC_LICENSE=your-license-uuid
 CRYOSPARC_TIMEOUT=300
+
+# Alternative to HOST+BASE_PORT:
+# CRYOSPARC_BASE_URL=http://localhost:39000
 ```
 
-The CRYOSPARC_LICENSE is mandatory for v4.7.1. You can find it in your CryoSPARC license file or web UI.
+`CRYOSPARC_LICENSE` is required by most instances — find it in your CryoSPARC license file or web UI.
 
 
 ## Usage
@@ -144,10 +152,10 @@ claude mcp remove cryosparc
 ```bash
 cd /path/to/cryosparc-mcp-server
 source .venv/bin/activate
-./start_server.sh --transport streamable-http --port 8200 --host 0.0.0.0 
+./start_server.sh --transport streamable-http --port 8200
 ```
 
-Keep this terminal open. (It is preferable to change --host 0.0.0.0 to your own IP address) The server will read credentials from .env
+Keep this terminal open. The server binds to 127.0.0.1 by default; reach it from another machine with an SSH tunnel (`ssh -L 8200:localhost:8200 user@host`). Credentials are read from .env.
 
 2. Add the server to Claude Code
 
@@ -215,9 +223,9 @@ Start the server in HTTP mode:
 ```bash
 cd /path/to/cryosparc-mcp-server
 source .venv/bin/activate
-./start_server.sh --transport streamable-http --port 8200 --host 0.0.0.0
+./start_server.sh --transport streamable-http --port 8200
 ```
-Keep this terminal open. (It is preferable to change --host 0.0.0.0 to your own IP address)
+Keep this terminal open. The server binds to 127.0.0.1 by default; use an SSH tunnel for remote access.
 
 Configure using openclaw mcp command:
 
@@ -270,21 +278,52 @@ cryosparc-mcp-server/
 └── src/cryosparc_mcp/
     ├── __init__.py
     ├── __main__.py
-    ├── connection.py        # CryoSPARC connection (v4.7.1)
-    ├── helpers.py           # JSON serialisation, error formatting
+    ├── connection.py        # CryoSPARC connection (v5: host+port or base_url, + license)
+    ├── helpers.py           # JSON serialisation, MCP errors, v5 adapters
     ├── server.py            # FastMCP server + lifespan
     ├── tools.py             # Navigation, job management, data inspection (29 tools)
     ├── tools_extra.py       # External Jobs + workflow helpers (9 tools)
-    └── tools_report.py      # PDF report generator (1 tool)
+    ├── tools_report.py      # PDF report generator (1 tool)
+    └── tools_results.py     # Results interpretation + class-average rendering (2 tools)
+tests/
+└── test_cryosparc_mcp.py    # Offline tests against a mocked CryoSPARC client
 ```
 
 ## Compatibility
 
-- **CryoSPARC**: v4.7.1 (tested; may work with other v4.x but not v5.x)
-- **cryosparc-tools**: v4.7.1
+- **CryoSPARC**: v5.x
+- **cryosparc-tools**: `>=5.0,<6` — this server uses the v5 API (`find_projects`,
+  `find_jobs`, `job.params/.inputs/.outputs`, `job_register`), which does not exist in 4.x
+- **MCP SDK**: `mcp>=1.26,<2` — mcp 2.x removed `mcp.server.fastmcp`
 - **Python**: 3.10+
-- **matplotlib** 
-- **numpy**
+- Optional extra `[report]`: matplotlib, numpy, pillow
+
+> **Note on tomography:** CryoSPARC has no native tomography / subtomogram-averaging
+> pipeline (the official job-type catalogue and the v5.0 release notes contain no
+> tomography jobs), so this server covers single-particle analysis only.
+
+## Changelog
+
+### 0.4.0 — CryoSPARC v5 migration
+- **Migrated to the cryosparc-tools v5 API.** The code previously called v5-only methods
+  (`find_projects`, `find_workspaces`, `find_jobs`, `job_register`,
+  `job.params/.title/.outputs/.full_spec`) while pinning `cryosparc-tools==4.7.1`, where
+  none of them exist — so most navigation, inspection and reporting tools could not work.
+- **Fixed `Dataset.columns()` → `fields()`** (`columns()` exists in neither 4.x nor 5.x).
+- **Fixed HTTP mode**, which raised `TypeError`: `FastMCP.run()` accepts only
+  `(transport, mount_path)`, so host/port now go through `server.settings`.
+- **`--host` now defaults to `127.0.0.1`** instead of `0.0.0.0` (the old default
+  contradicted the security warning below).
+- **Tool failures are now real MCP errors** (`isError`) instead of success payloads
+  containing the word "Error", which an agent could not distinguish from a valid result.
+- **The PDF report no longer claims success when every job was skipped**, and reports
+  per-job skip reasons.
+- **Report performance:** sample micrographs are chosen *before* downloading, instead of
+  downloading every micrograph in the job to render ~10 of them.
+- **Fixed `get_job_spec`**, which read a non-existent `value` field instead of `default`;
+  it now also returns descriptions, allowed values and the current value.
+- **New:** `cryosparc_job_results` and `cryosparc_render_class_averages`.
+- **New:** offline test suite against a mocked CryoSPARC client.
 
 ## License
 

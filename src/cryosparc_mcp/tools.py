@@ -48,7 +48,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
 from .connection import get_client
-from .helpers import fmt_error, to_json
+from .helpers import dataset_fields, params_to_dict, to_json, tool_error
 
 
 # ====================================================================
@@ -97,7 +97,9 @@ class CreateJobIn(_Base):
     project_uid: str = Field(..., min_length=1)
     workspace_uid: str = Field(..., min_length=1)
     job_type: str = Field(..., description=(
-        "CryoSPARC job type string. This list covers all known types:\n"
+        "CryoSPARC job type string. The list below is a common-case cheat sheet and may\n"
+        "drift between CryoSPARC versions — call cryosparc_list_job_types for the\n"
+        "authoritative list on THIS instance, and cryosparc_get_job_spec for parameters.\n"
         "  IMPORT: 'import_movies', 'import_micrographs', 'import_volumes', 'import_particles'\n"
         "  MOTION CORRECTION: 'patch_motion_correction_multi'\n"
         "  CTF: 'patch_ctf_estimation_multi'\n"
@@ -272,7 +274,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             url = getattr(cs, "base_url", None) or f"{getattr(cs, 'host', 'unknown')}:{getattr(cs, 'base_port', 'unknown')}"
             return to_json({"connected": True, "base_url": url, "user": str(getattr(cs, "user", "unknown"))})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_list_projects", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_list_projects(params: ListProjectsIn) -> str:
@@ -288,7 +290,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             items = [{"uid": p.uid, "title": p.title, "desc": p.desc} for p in projects]
             return to_json({"count": len(items), "projects": items})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_find_project", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_find_project(params: FindProjectIn) -> str:
@@ -303,7 +305,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             p = cs.find_project(params.project_uid)
             return to_json({"uid": p.uid, "title": p.title, "desc": p.desc, "dir": str(p.dir)})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_list_workspaces", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_list_workspaces(params: ListWorkspacesIn) -> str:
@@ -320,7 +322,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             items = [{"uid": w.uid, "title": w.title, "desc": w.desc} for w in workspaces]
             return to_json({"count": len(items), "workspaces": items})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_list_jobs", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_list_jobs(params: ListJobsIn) -> str:
@@ -343,7 +345,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             items = [{"uid": j.uid, "type": j.type, "title": j.title, "status": j.status} for j in jobs]
             return to_json({"count": len(items), "jobs": items})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_find_job", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_find_job(params: FindJobIn) -> str:
@@ -360,13 +362,13 @@ def register_all_tools(mcp: FastMCP) -> None:
             info = {
                 "uid": j.uid, "type": j.type, "title": j.title,
                 "desc": j.desc, "status": j.status,
-                "params": dict(j.params) if j.params else {},
+                "params": params_to_dict(j.params),
                 "inputs": list(j.inputs.keys()) if j.inputs else [],
                 "outputs": list(j.outputs.keys()) if j.outputs else [],
             }
             return to_json(info)
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_get_job_spec", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_get_job_spec(params: GetJobSpecIn) -> str:
@@ -385,22 +387,37 @@ def register_all_tools(mcp: FastMCP) -> None:
             j = project.find_job(params.job_uid)
             spec = j.full_spec
             if params.spec_type == "params" and spec and hasattr(spec, "params"):
+                current = params_to_dict(j.params)
                 param_list = []
                 for name, p in spec.params.items():
-                    param_list.append({
+                    if getattr(p, "hidden", False):
+                        continue
+                    entry = {
                         "name": name,
                         "title": getattr(p, "title", name),
                         "type": getattr(p, "type", "unknown"),
-                        "value": getattr(p, "value", None),
-                    })
-                return to_json({"job_uid": params.job_uid, "spec_type": "params", "params": param_list})
+                        # v5 JobRegisterParamSpec exposes `default` (there is no `value`)
+                        "default": getattr(p, "default", None),
+                        "current": current.get(name),
+                    }
+                    desc = getattr(p, "description", None)
+                    if desc:
+                        entry["description"] = desc
+                    enum = getattr(p, "enum", None)
+                    if enum:
+                        entry["allowed"] = enum
+                    if getattr(p, "advanced", False):
+                        entry["advanced"] = True
+                    param_list.append(entry)
+                return to_json({"job_uid": params.job_uid, "spec_type": "params",
+                                "count": len(param_list), "params": param_list})
             elif params.spec_type == "inputs":
                 return to_json({"job_uid": params.job_uid, "spec_type": "inputs", "inputs": list(j.inputs.keys()) if j.inputs else []})
             elif params.spec_type == "outputs":
                 return to_json({"job_uid": params.job_uid, "spec_type": "outputs", "outputs": list(j.outputs.keys()) if j.outputs else []})
             return to_json({"error": f"Unknown spec_type: {params.spec_type}"})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_list_job_types", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_list_job_types(params: ListJobTypesIn) -> str:
@@ -411,37 +428,28 @@ def register_all_tools(mcp: FastMCP) -> None:
         """
         try:
             cs = get_client()
-            register = cs.job_register
+            register = cs.job_register  # v5: JobRegister(specs=[JobRegisterJobSpec], categories=[...])
             items = []
-
-            # Recent cryosparc-tools: job_register is a JobRegister model with a
-            # list of specs. Older versions: an iterable of dict "sections".
-            specs = getattr(register, "specs", None)
-            if specs is not None:
-                for spec in specs:
-                    sec_name = (getattr(spec, "section", None)
-                                or getattr(spec, "category", None) or "")
-                    if params.category and sec_name != params.category:
-                        continue
-                    items.append({
-                        "type": getattr(spec, "type", None) or getattr(spec, "name", "unknown"),
-                        "title": getattr(spec, "title", ""),
-                        "category": sec_name,
-                    })
-            else:
-                for section in register:
-                    sec_name = section.get("name", "")
-                    if params.category and sec_name != params.category:
-                        continue
-                    for jt in section.get("contains", []):
-                        items.append({
-                            "type": jt.get("name", jt.get("type", "unknown")),
-                            "title": jt.get("title", ""),
-                            "category": sec_name,
-                        })
-            return to_json({"count": len(items), "job_types": items})
+            for spec in register.specs:
+                if getattr(spec, "hidden", False):
+                    continue
+                category = getattr(spec, "category", "") or ""
+                if params.category and category != params.category:
+                    continue
+                items.append({
+                    "type": spec.type,
+                    "title": getattr(spec, "title", "") or "",
+                    "category": category,
+                    "interactive": bool(getattr(spec, "interactive", False)),
+                })
+            items.sort(key=lambda i: (i["category"], i["type"]))
+            return to_json({
+                "count": len(items),
+                "categories": sorted({i["category"] for i in items if i["category"]}),
+                "job_types": items,
+            })
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_get_lanes", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_get_lanes(params: GetLanesIn) -> str:
@@ -454,7 +462,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             lanes = cs.get_lanes()
             return to_json({"lanes": lanes})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_get_targets", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_get_targets(params: GetTargetsIn) -> str:
@@ -464,7 +472,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             targets = cs.get_targets(lane=params.lane) if params.lane else cs.get_targets()
             return to_json({"targets": targets})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     # ==============================================================
     # JOB MANAGEMENT
@@ -484,7 +492,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             ws = project.create_workspace(params.title, desc=params.desc)
             return to_json({"workspace_uid": ws.uid, "title": ws.title})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_create_job", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_create_job(params: CreateJobIn) -> str:
@@ -520,7 +528,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             )
             return to_json({"job_uid": job.uid, "type": job.type, "status": job.status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_set_param", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
     async def cryosparc_set_param(params: SetParamIn) -> str:
@@ -536,7 +544,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             job.set_param(params.param_name, params.value)
             return to_json({"success": True, "param": params.param_name, "value": params.value})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_set_params_batch", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
     async def cryosparc_set_params_batch(params: SetParamsBatchIn) -> str:
@@ -560,7 +568,7 @@ def register_all_tools(mcp: FastMCP) -> None:
                 out["errors"] = errors
             return to_json(out)
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_connect", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
     async def cryosparc_connect(params: ConnectIn) -> str:
@@ -578,7 +586,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             job.connect(params.target_input, params.source_job_uid, params.source_output)
             return to_json({"success": True, "connection": f"{params.source_job_uid}.{params.source_output} -> {params.job_uid}.{params.target_input}"})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_queue_job", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_queue_job(params: QueueJobIn) -> str:
@@ -602,7 +610,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             job.refresh()
             return to_json({"job_uid": job.uid, "status": job.status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_wait_for_done", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_wait_for_done(params: WaitJobIn) -> str:
@@ -621,7 +629,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             status = job.wait_for_done(timeout=params.timeout, error_on_incomplete=params.error_on_incomplete)
             return to_json({"job_uid": job.uid, "status": status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_wait_for_status", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_wait_for_status(params: WaitStatusIn) -> str:
@@ -644,7 +652,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             status = job.wait_for_status(params.target_status, timeout=params.timeout)
             return to_json({"job_uid": job.uid, "status": status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_interact", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_interact(params: InteractIn) -> str:
@@ -675,7 +683,7 @@ def register_all_tools(mcp: FastMCP) -> None:
                 result = job.interact(params.action)
             return to_json({"job_uid": job.uid, "action": params.action, "result": result})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_kill_job", annotations={"readOnlyHint": False, "destructiveHint": True})
     async def cryosparc_kill_job(params: JobRefIn) -> str:
@@ -691,7 +699,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             job.refresh()
             return to_json({"job_uid": job.uid, "status": job.status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_clear_job", annotations={"readOnlyHint": False, "destructiveHint": True})
     async def cryosparc_clear_job(params: JobRefIn) -> str:
@@ -707,7 +715,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             job.refresh()
             return to_json({"job_uid": job.uid, "status": job.status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     # ==============================================================
     # DATA INSPECTION & DOWNLOAD
@@ -725,10 +733,10 @@ def register_all_tools(mcp: FastMCP) -> None:
             project = cs.find_project(params.project_uid)
             job = project.find_job(params.job_uid)
             dset = job.load_output(params.output_name)
-            cols = [{"name": c, "dtype": str(dset[c].dtype)} for c in dset.columns()]
+            cols = [{"name": c, "dtype": str(dset[c].dtype)} for c in dataset_fields(dset)]
             return to_json({"job_uid": params.job_uid, "output": params.output_name, "num_rows": len(dset), "columns": cols})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_load_output", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_load_output(params: LoadOutputIn) -> str:
@@ -745,7 +753,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             job = project.find_job(params.job_uid)
             dset = job.load_output(params.output_name, slots=params.slots) if params.slots else job.load_output(params.output_name)
             total = len(dset)
-            col_names = list(dset.columns())
+            col_names = dataset_fields(dset)
             if total > 10000 and not params.slots:
                 return to_json({"warning": "Dataset is large; specify 'slots'.", "num_rows": total, "columns": col_names})
             start = min(params.offset, total)
@@ -758,7 +766,7 @@ def register_all_tools(mcp: FastMCP) -> None:
                 "columns": col_names, "rows": rows,
             })
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_list_files", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_list_files(params: ListFilesIn) -> str:
@@ -777,7 +785,7 @@ def register_all_tools(mcp: FastMCP) -> None:
                 files = project.list_files(prefix=params.prefix or "", recursive=params.recursive)
             return to_json({"files": list(files)})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_list_assets", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_list_assets(params: ListAssetsIn) -> str:
@@ -794,7 +802,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             items = [{"id": str(a.get("_id", a.get("id", ""))), "filename": a.get("filename", "")} for a in assets]
             return to_json({"assets": items})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_download_mrc", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_download_mrc(params: DownloadMrcIn) -> str:
@@ -819,7 +827,7 @@ def register_all_tools(mcp: FastMCP) -> None:
                 "data_shape": data.shape, "data_dtype": str(data.dtype),
             })
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_download_file", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_download_file(params: DownloadFileIn) -> str:
@@ -835,7 +843,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             result = project.download_file(params.path, target=params.target)
             return to_json({"path": params.path, "target": str(result)})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     # ==============================================================
     # WORKFLOW & PARAMETER HELPERS
@@ -877,7 +885,7 @@ def register_all_tools(mcp: FastMCP) -> None:
                 "num_jobs": len(jobs), "jobs": jobs,
             })
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_suggest_params", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_suggest_params(params: SuggestParamsIn) -> str:

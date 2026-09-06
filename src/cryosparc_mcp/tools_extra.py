@@ -36,7 +36,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
 from .connection import get_client
-from .helpers import fmt_error, to_json
+from .helpers import dataset_fields, params_to_dict, to_json, tool_error
 
 
 # ====================================================================
@@ -204,7 +204,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
             job = project.create_external_job(params.workspace_uid, title=params.title, desc=params.desc or "")
             return to_json({"job_uid": job.uid, "type": job.type, "status": job.status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_external_connect", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
     async def cryosparc_external_connect(params: ExternalConnectIn) -> str:
@@ -244,7 +244,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
                 "connection": f"{params.source_job_uid}.{params.source_output} -> {params.job_uid}.{params.target_input}",
             })
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_external_add_output", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_external_add_output(params: ExternalAddOutputIn) -> str:
@@ -280,7 +280,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
 
             return to_json({"success": True, "output": params.name, "allocated_rows": allocated})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_external_start", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_external_start(params: ExternalStartIn) -> str:
@@ -297,7 +297,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
             job.refresh()
             return to_json({"job_uid": job.uid, "status": job.status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_external_save_output", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_external_save_output(params: ExternalSaveOutputIn) -> str:
@@ -341,7 +341,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
             job.save_output(params.output_name, dset)
             return to_json({"success": True, "output": params.output_name, "rows": len(dset), "columns_written": written})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_external_stop", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_external_stop(params: ExternalStopIn) -> str:
@@ -364,7 +364,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
                 _alloc_registry.pop(k, None)
             return to_json({"job_uid": job.uid, "status": job.status})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_external_load_input", annotations={"readOnlyHint": True, "destructiveHint": False})
     async def cryosparc_external_load_input(params: ExternalLoadInputIn) -> str:
@@ -381,7 +381,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
             job = project.find_external_job(params.job_uid)
             dset = job.load_input(params.input_name, slots=params.slots) if params.slots else job.load_input(params.input_name)
             total = len(dset)
-            col_names = list(dset.columns())
+            col_names = dataset_fields(dset)
             start = min(params.offset, total)
             end = min(start + params.limit, total)
             rows = [dict(r) for r in islice(dset.rows(), start, end)]
@@ -392,7 +392,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
                 "columns": col_names, "rows": rows,
             })
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     # ==============================================================
     # WORKFLOW HELPERS
@@ -432,7 +432,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
                 queued = True
             return to_json({"job_uid": job.uid, "type": job.type, "status": job.status, "queued": queued})
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
     @mcp.tool(name="cryosparc_workflow_preprocess", annotations={"readOnlyHint": False, "destructiveHint": False})
     async def cryosparc_workflow_preprocess(params: WorkflowPreprocessIn) -> str:
@@ -475,4 +475,4 @@ def register_extra_tools(mcp: FastMCP) -> None:
                 "queued": queued,
             })
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e

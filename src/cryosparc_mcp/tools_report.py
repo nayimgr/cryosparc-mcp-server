@@ -18,7 +18,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
 from .connection import get_client
-from .helpers import fmt_error, to_json
+from .helpers import dataset_fields, to_json, tool_error
 
 
 class GenerateReportIn(BaseModel):
@@ -155,25 +155,38 @@ def register_report_tools(mcp: FastMCP) -> None:
                     if jtype in ("patch_ctf_estimation_multi", "ctf_estimation", "patch_ctf_extract"):
                         ctf_jobs.append(job)
 
+                skipped: List[Dict[str, str]] = []
                 for job in target_jobs:
                     try:
                         made_pages = _report_job(pdf, plt, np, project, job, params, motion_jobs, ctf_jobs)
                         if made_pages:
                             pages_created.extend(made_pages)
-                    except Exception:
-                        # Skip silently — job data not accessible
-                        continue
+                        else:
+                            skipped.append({"job_uid": job.uid, "type": job.type,
+                                            "reason": "no reportable data"})
+                    except Exception as job_exc:  # noqa: BLE001
+                        # Report the reason instead of hiding it: a silent skip made
+                        # a fully-empty report look like a success.
+                        skipped.append({"job_uid": job.uid, "type": job.type,
+                                        "reason": f"{type(job_exc).__name__}: {job_exc}"})
 
+            content_pages = [p for p in pages_created if p != "Overview"]
             return to_json({
-                "success": True,
+                "success": bool(content_pages),
                 "pdf_path": pdf_path,
                 "total_jobs_scanned": len(target_jobs),
+                "jobs_reported": len(target_jobs) - len(skipped),
                 "pages": pages_created,
-                "message": f"Report saved to {pdf_path}",
+                "skipped": skipped,
+                "message": (
+                    f"Report saved to {pdf_path}" if content_pages else
+                    f"No job produced reportable data — {pdf_path} contains only the "
+                    f"overview page. See 'skipped' for the per-job reasons."
+                ),
             })
 
         except Exception as e:
-            return fmt_error(e)
+            raise tool_error(e) from e
 
 
 # ====================================================================
@@ -367,7 +380,7 @@ def _page_motion(pdf, plt, np, job) -> Optional[str]:
     if len(mics) == 0:
         return None
 
-    cols = list(mics.columns())
+    cols = dataset_fields(mics)
     fig, axes = plt.subplots(1, 2, figsize=(11, 5))
     fig.suptitle(f"Motion Correction — {job.uid} ({len(mics)} micrographs)", fontsize=14, fontweight="bold")
 
@@ -408,7 +421,7 @@ def _page_ctf(pdf, plt, np, job) -> Optional[str]:
     if len(exposures) == 0:
         return None
 
-    cols = list(exposures.columns())
+    cols = dataset_fields(exposures)
     has_df = "ctf/df1_A" in cols and "ctf/df2_A" in cols
 
     fig, axes = plt.subplots(2, 2, figsize=(11, 8.5))
@@ -466,7 +479,7 @@ def _page_ice_thickness(pdf, plt, np, job) -> Optional[str]:
     if len(exposures) == 0:
         return None
 
-    cols = list(exposures.columns())
+    cols = dataset_fields(exposures)
     ice_col = None
     for candidate in ["ctf/ice_thickness_A", "ctf/ice_thickness"]:
         if candidate in cols:
@@ -576,7 +589,7 @@ def _page_picking_scores(pdf, plt, np, job) -> Optional[str]:
     if len(particles) == 0:
         return None
 
-    cols = list(particles.columns())
+    cols = dataset_fields(particles)
     fig, axes = plt.subplots(1, 2, figsize=(11, 5))
     fig.suptitle(f"Picking Scores — {job.uid} ({job.type}) — {len(particles)} particles", fontsize=14, fontweight="bold")
 
@@ -722,56 +735,47 @@ def _page_sample_micrographs(pdf, plt, np, project, picking_job, params, motion_
     coord_x_col = None
     coord_y_col = None
     for cx in ["location/center_x_pix", "location/center_x_frac"]:
-        if cx in particles.columns():
+        if cx in dataset_fields(particles):
             coord_x_col = cx
             break
     for cy in ["location/center_y_pix", "location/center_y_frac"]:
-        if cy in particles.columns():
+        if cy in dataset_fields(particles):
             coord_y_col = cy
             break
     if coord_x_col is None or coord_y_col is None:
         return None
     is_fractional = "_frac" in coord_x_col
 
-    # Get dimensions from first micrograph
-    try:
-        sample_mic = mics.rows()[0]
-        sample_path = sample_mic["blob/path"]
-        sample_idx = sample_mic["blob/idx"]
-        _, sample_data = project.download_mrc(sample_path)
-        if sample_data.ndim == 3:
-            height, width = sample_data.shape[1], sample_data.shape[2]
-        else:
-            height, width = sample_data.shape
-    except Exception:
+    # --- Sample FIRST, then download only the sampled micrographs. ---
+    # Previously every micrograph in the job was downloaded before sampling,
+    # i.e. potentially tens of GB of transfer just to render ~10 images.
+    if "micrograph_uid" not in dataset_fields(particles):
+        return None
+    mic_rows_by_uid = {row["uid"]: row for row in mics.rows()}
+    pool = sorted(uid for uid in set(particles["micrograph_uid"]) if uid in mic_rows_by_uid)
+    if not pool:
         return None
 
-    # Build mapping micrograph_uid -> data
+    n_sample = min(params.num_sample_micrographs, len(pool))
+    selected_uids = random.sample(pool, n_sample)
+
     mic_uid_to_data = {}
-    for row in mics.rows():
-        uid = row["uid"]
-        path = row["blob/path"]
-        idx = row["blob/idx"]
+    width = height = None
+    for uid in selected_uids:
+        row = mic_rows_by_uid[uid]
         try:
-            _, data = project.download_mrc(path)
-            if data.ndim == 3:
-                data = data[idx] if idx < data.shape[0] else data[0]
-            mic_uid_to_data[uid] = data
+            _, data = project.download_mrc(row["blob/path"])
         except Exception:
             continue
-    if not mic_uid_to_data:
+        if data.ndim == 3:
+            idx = row["blob/idx"]
+            data = data[idx] if idx < data.shape[0] else data[0]
+        mic_uid_to_data[uid] = data
+        if width is None:
+            height, width = data.shape[0], data.shape[1]
+    selected_uids = [u for u in selected_uids if u in mic_uid_to_data]
+    if not selected_uids:
         return None
-
-    # Get list of micrograph UIDs that have particles
-    if "micrograph_uid" not in particles.columns():
-        return None
-    mic_uid_list = list(set(particles["micrograph_uid"]))
-    mic_uid_list = [uid for uid in mic_uid_list if uid in mic_uid_to_data]
-    if not mic_uid_list:
-        return None
-
-    n_sample = min(params.num_sample_micrographs, len(mic_uid_list))
-    selected_uids = random.sample(mic_uid_list, n_sample)
 
     # For each selected micrograph, collect its particles in a SINGLE pass over
     # the particle set (previously this scanned all particles once per micrograph).
@@ -1045,7 +1049,7 @@ def _page_ctf_refine(pdf, plt, np, job) -> Optional[str]:
     if len(exposures) == 0:
         return None
 
-    cols = list(exposures.columns())
+    cols = dataset_fields(exposures)
     fig, ax = plt.subplots(figsize=(8.5, 5))
     fig.suptitle(f"CTF Refinement — {job.uid} ({job.type})", fontsize=14, fontweight="bold")
 
