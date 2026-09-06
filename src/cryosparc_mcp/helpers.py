@@ -5,7 +5,23 @@ import json
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
-from mcp.server.fastmcp.exceptions import ToolError
+from fastmcp.exceptions import ToolError
+
+# --------------------------------------------------------------------------
+# MCP Tasks extension (io.modelcontextprotocol/tasks, spec 2026-07-28)
+# --------------------------------------------------------------------------
+# Waiting on a CryoSPARC job can take hours. With the tasks extension the client
+# gets a durable task handle and polls `tasks/get` instead of holding one request
+# open. Requires the `fastmcp[tasks]` extra; without it the same tools still work
+# as ordinary blocking calls.
+try:  # pragma: no cover - depends on optional extra
+    import fastmcp_tasks  # noqa: F401
+
+    TASKS_AVAILABLE = True
+except Exception:  # noqa: BLE001
+    TASKS_AVAILABLE = False
+
+TASK_MODE: Any = TASKS_AVAILABLE
 
 
 class _Encoder(json.JSONEncoder):
@@ -30,6 +46,17 @@ class _Encoder(json.JSONEncoder):
 def to_json(obj: Any, indent: int = 2) -> str:
     """Serialise to JSON, handling pydantic models, numpy types and datetimes."""
     return json.dumps(obj, cls=_Encoder, indent=indent, ensure_ascii=False)
+
+
+def jsonable(obj: Any) -> Any:
+    """Return a JSON-safe copy of `obj` (plain dict/list/scalars).
+
+    Tools return this instead of a JSON *string* so the MCP layer can emit
+    `structuredContent` alongside an `outputSchema`, which an agent can read
+    field-by-field rather than re-parsing prose. Pydantic models, numpy scalars
+    and datetimes are normalised on the way through.
+    """
+    return json.loads(to_json(obj, indent=None))
 
 
 def fmt_error(exc: Exception) -> str:

@@ -32,11 +32,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
 from .connection import get_client
-from .helpers import dataset_fields, params_to_dict, to_json, tool_error
+from .helpers import TASK_MODE, dataset_fields, jsonable, params_to_dict, tool_error
 
 
 # ====================================================================
@@ -186,8 +186,8 @@ def register_extra_tools(mcp: FastMCP) -> None:
     # EXTERNAL JOBS
     # ==============================================================
 
-    @mcp.tool(name="cryosparc_create_external_job", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_create_external_job(params: CreateExternalJobIn) -> str:
+    @mcp.tool(name="cryosparc_create_external_job", title="Create External Job", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_create_external_job(params: CreateExternalJobIn) -> Dict[str, Any]:
         """Create an External Job in a workspace.
 
         External Jobs let you inject results produced outside CryoSPARC
@@ -202,12 +202,12 @@ def register_extra_tools(mcp: FastMCP) -> None:
             cs = get_client()
             project = cs.find_project(params.project_uid)
             job = project.create_external_job(params.workspace_uid, title=params.title, desc=params.desc or "")
-            return to_json({"job_uid": job.uid, "type": job.type, "status": job.status})
+            return jsonable({"job_uid": job.uid, "type": job.type, "status": job.status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_external_connect", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
-    async def cryosparc_external_connect(params: ExternalConnectIn) -> str:
+    @mcp.tool(name="cryosparc_external_connect", title="External Job: Connect Input", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+    async def cryosparc_external_connect(params: ExternalConnectIn) -> Dict[str, Any]:
         """Add an input slot to an external job and connect it to an upstream output.
 
         If 'input_type' is given, the input slot is created with add_input()
@@ -238,7 +238,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
             else:
                 job.connect(params.target_input, params.source_job_uid, params.source_output)
 
-            return to_json({
+            return jsonable({
                 "success": True,
                 "input_created": created_input,
                 "connection": f"{params.source_job_uid}.{params.source_output} -> {params.job_uid}.{params.target_input}",
@@ -246,8 +246,8 @@ def register_extra_tools(mcp: FastMCP) -> None:
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_external_add_output", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_external_add_output(params: ExternalAddOutputIn) -> str:
+    @mcp.tool(name="cryosparc_external_add_output", title="External Job: Add Output", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_external_add_output(params: ExternalAddOutputIn) -> Dict[str, Any]:
         """Declare an output slot on an external job, optionally pre-allocating rows.
 
         Outputs must be declared before data can be saved. Use 'slots' to list
@@ -278,12 +278,12 @@ def register_extra_tools(mcp: FastMCP) -> None:
             else:
                 job.add_output(**kwargs)
 
-            return to_json({"success": True, "output": params.name, "allocated_rows": allocated})
+            return jsonable({"success": True, "output": params.name, "allocated_rows": allocated})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_external_start", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_external_start(params: ExternalStartIn) -> str:
+    @mcp.tool(name="cryosparc_external_start", title="External Job: Start", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_external_start(params: ExternalStartIn) -> Dict[str, Any]:
         """Start an external job: set status to 'running' (or 'waiting').
 
         Outputs can only be saved while the job is 'running'. Call this after
@@ -295,12 +295,12 @@ def register_extra_tools(mcp: FastMCP) -> None:
             job = project.find_external_job(params.job_uid)
             job.start(status=params.status)
             job.refresh()
-            return to_json({"job_uid": job.uid, "status": job.status})
+            return jsonable({"job_uid": job.uid, "status": job.status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_external_save_output", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_external_save_output(params: ExternalSaveOutputIn) -> str:
+    @mcp.tool(name="cryosparc_external_save_output", title="External Job: Save Output", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_external_save_output(params: ExternalSaveOutputIn) -> Dict[str, Any]:
         """Populate and persist an output dataset on a running external job.
 
         Provide 'data' as {column_name: [values...]} with equal-length columns.
@@ -318,7 +318,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
             # Determine row count
             lengths = {len(v) for v in params.data.values()} if params.data else {0}
             if len(lengths) > 1:
-                return to_json({"error": f"All columns must have equal length; got {sorted(lengths)}."})
+                return jsonable({"error": f"All columns must have equal length; got {sorted(lengths)}."})
             data_len = next(iter(lengths)) if lengths else 0
             n_rows = params.num_rows if params.num_rows is not None else data_len
 
@@ -331,20 +331,20 @@ def register_extra_tools(mcp: FastMCP) -> None:
             written = []
             for col, values in params.data.items():
                 if len(values) != len(dset):
-                    return to_json({"error": f"Column '{col}' has {len(values)} values but dataset has {len(dset)} rows."})
+                    return jsonable({"error": f"Column '{col}' has {len(values)} values but dataset has {len(dset)} rows."})
                 try:
                     dset[col] = values
                     written.append(col)
                 except Exception as col_err:
-                    return to_json({"error": f"Failed to set column '{col}': {col_err}"})
+                    return jsonable({"error": f"Failed to set column '{col}': {col_err}"})
 
             job.save_output(params.output_name, dset)
-            return to_json({"success": True, "output": params.output_name, "rows": len(dset), "columns_written": written})
+            return jsonable({"success": True, "output": params.output_name, "rows": len(dset), "columns_written": written})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_external_stop", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_external_stop(params: ExternalStopIn) -> str:
+    @mcp.tool(name="cryosparc_external_stop", title="External Job: Stop", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_external_stop(params: ExternalStopIn) -> Dict[str, Any]:
         """Finish an external job: mark 'completed', or 'failed' if an error is given.
 
         Call after all outputs are saved. Once completed, the job's outputs are
@@ -362,12 +362,12 @@ def register_extra_tools(mcp: FastMCP) -> None:
             # Drop any leftover allocations for this job
             for k in [k for k in _alloc_registry if k[0] == params.project_uid and k[1] == params.job_uid]:
                 _alloc_registry.pop(k, None)
-            return to_json({"job_uid": job.uid, "status": job.status})
+            return jsonable({"job_uid": job.uid, "status": job.status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_external_load_input", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_external_load_input(params: ExternalLoadInputIn) -> str:
+    @mcp.tool(name="cryosparc_external_load_input", title="External Job: Load Input", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_external_load_input(params: ExternalLoadInputIn) -> Dict[str, Any]:
         """Load paginated rows from a connected input of an external job.
 
         Use this to read data that was wired in with cryosparc_external_connect
@@ -385,7 +385,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
             start = min(params.offset, total)
             end = min(start + params.limit, total)
             rows = [dict(r) for r in islice(dset.rows(), start, end)]
-            return to_json({
+            return jsonable({
                 "input": params.input_name,
                 "total_rows": total, "offset": start, "count": len(rows),
                 "has_more": end < total, "next_offset": end if end < total else None,
@@ -398,8 +398,8 @@ def register_extra_tools(mcp: FastMCP) -> None:
     # WORKFLOW HELPERS
     # ==============================================================
 
-    @mcp.tool(name="cryosparc_workflow_import_movies", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_workflow_import_movies(params: WorkflowImportMoviesIn) -> str:
+    @mcp.tool(name="cryosparc_workflow_import_movies", title="Workflow: Import Movies", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_workflow_import_movies(params: WorkflowImportMoviesIn) -> Dict[str, Any]:
         """Create an import_movies job with the essential acquisition parameters.
 
         One-step shortcut over create_job + set_params. If 'lane' is provided,
@@ -430,12 +430,12 @@ def register_extra_tools(mcp: FastMCP) -> None:
                 job.queue(params.lane)
                 job.refresh()
                 queued = True
-            return to_json({"job_uid": job.uid, "type": job.type, "status": job.status, "queued": queued})
+            return jsonable({"job_uid": job.uid, "type": job.type, "status": job.status, "queued": queued})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_workflow_preprocess", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_workflow_preprocess(params: WorkflowPreprocessIn) -> str:
+    @mcp.tool(name="cryosparc_workflow_preprocess", title="Workflow: Motion + CTF", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_workflow_preprocess(params: WorkflowPreprocessIn) -> Dict[str, Any]:
         """Chain Patch Motion Correction then Patch CTF Estimation off an import job.
 
         Creates patch_motion_correction_multi connected to the import job's
@@ -469,7 +469,7 @@ def register_extra_tools(mcp: FastMCP) -> None:
                 ctf.refresh()
                 queued = True
 
-            return to_json({
+            return jsonable({
                 "motion_job_uid": motion.uid, "motion_status": motion.status,
                 "ctf_job_uid": ctf.uid, "ctf_status": ctf.status,
                 "queued": queued,

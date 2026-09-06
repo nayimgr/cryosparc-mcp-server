@@ -44,11 +44,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
 from .connection import get_client
-from .helpers import dataset_fields, params_to_dict, to_json, tool_error
+from .helpers import TASK_MODE, dataset_fields, jsonable, params_to_dict, tool_error
 
 
 # ====================================================================
@@ -259,8 +259,8 @@ def register_all_tools(mcp: FastMCP) -> None:
     # NAVIGATION (read-only)
     # ==============================================================
 
-    @mcp.tool(name="cryosparc_test_connection", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_test_connection(params: TestConnectionIn) -> str:
+    @mcp.tool(name="cryosparc_test_connection", title="Test Connection", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_test_connection(params: TestConnectionIn) -> Dict[str, Any]:
         """Test connection to the CryoSPARC instance.
 
         Verifies that the API is reachable and working. Call this first
@@ -272,12 +272,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             cs = get_client()
             cs.test_connection()
             url = getattr(cs, "base_url", None) or f"{getattr(cs, 'host', 'unknown')}:{getattr(cs, 'base_port', 'unknown')}"
-            return to_json({"connected": True, "base_url": url, "user": str(getattr(cs, "user", "unknown"))})
+            return jsonable({"connected": True, "base_url": url, "user": str(getattr(cs, "user", "unknown"))})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_list_projects", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_list_projects(params: ListProjectsIn) -> str:
+    @mcp.tool(name="cryosparc_list_projects", title="List Projects", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_list_projects(params: ListProjectsIn) -> Dict[str, Any]:
         """List all accessible CryoSPARC projects.
 
         A project is the top-level container for cryo-EM processing.
@@ -288,12 +288,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             cs = get_client()
             projects = list(cs.find_projects())
             items = [{"uid": p.uid, "title": p.title, "desc": p.desc} for p in projects]
-            return to_json({"count": len(items), "projects": items})
+            return jsonable({"count": len(items), "projects": items})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_find_project", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_find_project(params: FindProjectIn) -> str:
+    @mcp.tool(name="cryosparc_find_project", title="Project Details", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_find_project(params: FindProjectIn) -> Dict[str, Any]:
         """Get detailed info about one project.
 
         Returns UID, title, description, and the filesystem directory
@@ -303,12 +303,12 @@ def register_all_tools(mcp: FastMCP) -> None:
         try:
             cs = get_client()
             p = cs.find_project(params.project_uid)
-            return to_json({"uid": p.uid, "title": p.title, "desc": p.desc, "dir": str(p.dir)})
+            return jsonable({"uid": p.uid, "title": p.title, "desc": p.desc, "dir": str(p.dir)})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_list_workspaces", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_list_workspaces(params: ListWorkspacesIn) -> str:
+    @mcp.tool(name="cryosparc_list_workspaces", title="List Workspaces", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_list_workspaces(params: ListWorkspacesIn) -> Dict[str, Any]:
         """List workspaces in a project.
 
         Workspaces group jobs. Each has a UID (e.g., 'W1').
@@ -320,12 +320,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             project = cs.find_project(params.project_uid)
             workspaces = list(project.find_workspaces())
             items = [{"uid": w.uid, "title": w.title, "desc": w.desc} for w in workspaces]
-            return to_json({"count": len(items), "workspaces": items})
+            return jsonable({"count": len(items), "workspaces": items})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_list_jobs", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_list_jobs(params: ListJobsIn) -> str:
+    @mcp.tool(name="cryosparc_list_jobs", title="List Jobs", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_list_jobs(params: ListJobsIn) -> Dict[str, Any]:
         """List jobs in a project, optionally filtered by workspace and/or type.
 
         Returns UID, type, title, and status for each job.
@@ -343,12 +343,12 @@ def register_all_tools(mcp: FastMCP) -> None:
                 kwargs["type"] = params.type
             jobs = list(project.find_jobs(**kwargs))
             items = [{"uid": j.uid, "type": j.type, "title": j.title, "status": j.status} for j in jobs]
-            return to_json({"count": len(items), "jobs": items})
+            return jsonable({"count": len(items), "jobs": items})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_find_job", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_find_job(params: FindJobIn) -> str:
+    @mcp.tool(name="cryosparc_find_job", title="Job Details", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_find_job(params: FindJobIn) -> Dict[str, Any]:
         """Get detailed info about a specific job.
 
         Returns status, all parameter values, and lists of input/output
@@ -366,12 +366,12 @@ def register_all_tools(mcp: FastMCP) -> None:
                 "inputs": list(j.inputs.keys()) if j.inputs else [],
                 "outputs": list(j.outputs.keys()) if j.outputs else [],
             }
-            return to_json(info)
+            return jsonable(info)
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_get_job_spec", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_get_job_spec(params: GetJobSpecIn) -> str:
+    @mcp.tool(name="cryosparc_get_job_spec", title="Job Specification", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_get_job_spec(params: GetJobSpecIn) -> Dict[str, Any]:
         """Get the parameter/input/output specification of a job.
 
         Use spec_type='params' to see all parameters with their types
@@ -409,18 +409,18 @@ def register_all_tools(mcp: FastMCP) -> None:
                     if getattr(p, "advanced", False):
                         entry["advanced"] = True
                     param_list.append(entry)
-                return to_json({"job_uid": params.job_uid, "spec_type": "params",
+                return jsonable({"job_uid": params.job_uid, "spec_type": "params",
                                 "count": len(param_list), "params": param_list})
             elif params.spec_type == "inputs":
-                return to_json({"job_uid": params.job_uid, "spec_type": "inputs", "inputs": list(j.inputs.keys()) if j.inputs else []})
+                return jsonable({"job_uid": params.job_uid, "spec_type": "inputs", "inputs": list(j.inputs.keys()) if j.inputs else []})
             elif params.spec_type == "outputs":
-                return to_json({"job_uid": params.job_uid, "spec_type": "outputs", "outputs": list(j.outputs.keys()) if j.outputs else []})
-            return to_json({"error": f"Unknown spec_type: {params.spec_type}"})
+                return jsonable({"job_uid": params.job_uid, "spec_type": "outputs", "outputs": list(j.outputs.keys()) if j.outputs else []})
+            return jsonable({"error": f"Unknown spec_type: {params.spec_type}"})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_list_job_types", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_list_job_types(params: ListJobTypesIn) -> str:
+    @mcp.tool(name="cryosparc_list_job_types", title="List Job Types", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_list_job_types(params: ListJobTypesIn) -> Dict[str, Any]:
         """List all available job types on this CryoSPARC instance.
 
         Returns the machine-readable type string (use in cryosparc_create_job),
@@ -443,7 +443,7 @@ def register_all_tools(mcp: FastMCP) -> None:
                     "interactive": bool(getattr(spec, "interactive", False)),
                 })
             items.sort(key=lambda i: (i["category"], i["type"]))
-            return to_json({
+            return jsonable({
                 "count": len(items),
                 "categories": sorted({i["category"] for i in items if i["category"]}),
                 "job_types": items,
@@ -451,8 +451,8 @@ def register_all_tools(mcp: FastMCP) -> None:
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_get_lanes", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_get_lanes(params: GetLanesIn) -> str:
+    @mcp.tool(name="cryosparc_get_lanes", title="List Scheduler Lanes", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_get_lanes(params: GetLanesIn) -> Dict[str, Any]:
         """List scheduler lanes (compute resource groups).
 
         A lane targets specific GPU workers. Omit to use default.
@@ -460,17 +460,17 @@ def register_all_tools(mcp: FastMCP) -> None:
         try:
             cs = get_client()
             lanes = cs.get_lanes()
-            return to_json({"lanes": lanes})
+            return jsonable({"lanes": lanes})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_get_targets", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_get_targets(params: GetTargetsIn) -> str:
+    @mcp.tool(name="cryosparc_get_targets", title="List GPU Targets", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_get_targets(params: GetTargetsIn) -> Dict[str, Any]:
         """List available scheduler targets (GPU workers/machines)."""
         try:
             cs = get_client()
             targets = cs.get_targets(lane=params.lane) if params.lane else cs.get_targets()
-            return to_json({"targets": targets})
+            return jsonable({"targets": targets})
         except Exception as e:
             raise tool_error(e) from e
 
@@ -478,8 +478,8 @@ def register_all_tools(mcp: FastMCP) -> None:
     # JOB MANAGEMENT
     # ==============================================================
 
-    @mcp.tool(name="cryosparc_create_workspace", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_create_workspace(params: CreateWorkspaceIn) -> str:
+    @mcp.tool(name="cryosparc_create_workspace", title="Create Workspace", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_create_workspace(params: CreateWorkspaceIn) -> Dict[str, Any]:
         """Create a new workspace in a project.
 
         Workspaces group jobs. You need one before creating any job.
@@ -490,12 +490,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             cs = get_client()
             project = cs.find_project(params.project_uid)
             ws = project.create_workspace(params.title, desc=params.desc)
-            return to_json({"workspace_uid": ws.uid, "title": ws.title})
+            return jsonable({"workspace_uid": ws.uid, "title": ws.title})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_create_job", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_create_job(params: CreateJobIn) -> str:
+    @mcp.tool(name="cryosparc_create_job", title="Create Job", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_create_job(params: CreateJobIn) -> Dict[str, Any]:
         """Create a new CryoSPARC job.
 
         This is the central tool for building processing pipelines.
@@ -526,12 +526,12 @@ def register_all_tools(mcp: FastMCP) -> None:
                 title=params.title or "",
                 desc=params.desc or "",
             )
-            return to_json({"job_uid": job.uid, "type": job.type, "status": job.status})
+            return jsonable({"job_uid": job.uid, "type": job.type, "status": job.status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_set_param", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
-    async def cryosparc_set_param(params: SetParamIn) -> str:
+    @mcp.tool(name="cryosparc_set_param", title="Set Parameter", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+    async def cryosparc_set_param(params: SetParamIn) -> Dict[str, Any]:
         """Set a single parameter on a job in 'building' status.
 
         Use cryosparc_get_job_spec first to see available parameters.
@@ -542,12 +542,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             project = cs.find_project(params.project_uid)
             job = project.find_job(params.job_uid)
             job.set_param(params.param_name, params.value)
-            return to_json({"success": True, "param": params.param_name, "value": params.value})
+            return jsonable({"success": True, "param": params.param_name, "value": params.value})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_set_params_batch", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
-    async def cryosparc_set_params_batch(params: SetParamsBatchIn) -> str:
+    @mcp.tool(name="cryosparc_set_params_batch", title="Set Parameters (Batch)", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+    async def cryosparc_set_params_batch(params: SetParamsBatchIn) -> Dict[str, Any]:
         """Set multiple parameters at once on a 'building' job.
 
         More efficient than calling cryosparc_set_param repeatedly.
@@ -566,12 +566,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             out = {"results": results}
             if errors:
                 out["errors"] = errors
-            return to_json(out)
+            return jsonable(out)
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_connect", annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
-    async def cryosparc_connect(params: ConnectIn) -> str:
+    @mcp.tool(name="cryosparc_connect", title="Connect Job Inputs", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+    async def cryosparc_connect(params: ConnectIn) -> Dict[str, Any]:
         """Connect an output of one job to an input of another.
 
         This wires the pipeline: data flows from source_output to target_input.
@@ -584,12 +584,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             project = cs.find_project(params.project_uid)
             job = project.find_job(params.job_uid)
             job.connect(params.target_input, params.source_job_uid, params.source_output)
-            return to_json({"success": True, "connection": f"{params.source_job_uid}.{params.source_output} -> {params.job_uid}.{params.target_input}"})
+            return jsonable({"success": True, "connection": f"{params.source_job_uid}.{params.source_output} -> {params.job_uid}.{params.target_input}"})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_queue_job", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_queue_job(params: QueueJobIn) -> str:
+    @mcp.tool(name="cryosparc_queue_job", title="Queue Job", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_queue_job(params: QueueJobIn) -> Dict[str, Any]:
         """Submit a job for execution on GPU workers.
 
         The job must be in 'building' status with all required inputs
@@ -608,12 +608,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             else:
                 job.queue()
             job.refresh()
-            return to_json({"job_uid": job.uid, "status": job.status})
+            return jsonable({"job_uid": job.uid, "status": job.status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_wait_for_done", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_wait_for_done(params: WaitJobIn) -> str:
+    @mcp.tool(task=TASK_MODE, name="cryosparc_wait_for_done", title="Wait for Job Completion", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_wait_for_done(params: WaitJobIn) -> Dict[str, Any]:
         """Wait until a job finishes (completed, failed, or killed).
 
         Use after queueing non-interactive jobs to block until they finish.
@@ -627,12 +627,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             project = cs.find_project(params.project_uid)
             job = project.find_job(params.job_uid)
             status = job.wait_for_done(timeout=params.timeout, error_on_incomplete=params.error_on_incomplete)
-            return to_json({"job_uid": job.uid, "status": status})
+            return jsonable({"job_uid": job.uid, "status": status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_wait_for_status", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_wait_for_status(params: WaitStatusIn) -> str:
+    @mcp.tool(task=TASK_MODE, name="cryosparc_wait_for_status", title="Wait for Job Status", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_wait_for_status(params: WaitStatusIn) -> Dict[str, Any]:
         """Wait for a job to reach a specific status (e.g., 'waiting').
 
         Essential for interactive jobs. After queueing an interactive job,
@@ -650,12 +650,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             project = cs.find_project(params.project_uid)
             job = project.find_job(params.job_uid)
             status = job.wait_for_status(params.target_status, timeout=params.timeout)
-            return to_json({"job_uid": job.uid, "status": status})
+            return jsonable({"job_uid": job.uid, "status": status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_interact", annotations={"readOnlyHint": False, "destructiveHint": False})
-    async def cryosparc_interact(params: InteractIn) -> str:
+    @mcp.tool(name="cryosparc_interact", title="Interactive Job Action", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": False})
+    async def cryosparc_interact(params: InteractIn) -> Dict[str, Any]:
         """Perform an interactive action on a job in 'waiting' status.
 
         Used for jobs that require user-like decisions:
@@ -681,12 +681,12 @@ def register_all_tools(mcp: FastMCP) -> None:
                 result = job.interact(params.action, params.data)
             else:
                 result = job.interact(params.action)
-            return to_json({"job_uid": job.uid, "action": params.action, "result": result})
+            return jsonable({"job_uid": job.uid, "action": params.action, "result": result})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_kill_job", annotations={"readOnlyHint": False, "destructiveHint": True})
-    async def cryosparc_kill_job(params: JobRefIn) -> str:
+    @mcp.tool(name="cryosparc_kill_job", title="Kill Job", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": True})
+    async def cryosparc_kill_job(params: JobRefIn) -> Dict[str, Any]:
         """Kill a running or queued job.
 
         The job transitions to 'killed' status.
@@ -697,12 +697,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             job = project.find_job(params.job_uid)
             job.kill()
             job.refresh()
-            return to_json({"job_uid": job.uid, "status": job.status})
+            return jsonable({"job_uid": job.uid, "status": job.status})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_clear_job", annotations={"readOnlyHint": False, "destructiveHint": True})
-    async def cryosparc_clear_job(params: JobRefIn) -> str:
+    @mcp.tool(name="cryosparc_clear_job", title="Clear Job", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": True})
+    async def cryosparc_clear_job(params: JobRefIn) -> Dict[str, Any]:
         """Reset a completed/failed/killed job to 'building' status.
 
         This removes existing outputs so you can change parameters and re-run.
@@ -713,7 +713,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             job = project.find_job(params.job_uid)
             job.clear()
             job.refresh()
-            return to_json({"job_uid": job.uid, "status": job.status})
+            return jsonable({"job_uid": job.uid, "status": job.status})
         except Exception as e:
             raise tool_error(e) from e
 
@@ -721,8 +721,8 @@ def register_all_tools(mcp: FastMCP) -> None:
     # DATA INSPECTION & DOWNLOAD
     # ==============================================================
 
-    @mcp.tool(name="cryosparc_dataset_summary", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_dataset_summary(params: DatasetSummaryIn) -> str:
+    @mcp.tool(name="cryosparc_dataset_summary", title="Dataset Schema", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_dataset_summary(params: DatasetSummaryIn) -> Dict[str, Any]:
         """Get schema of a job output: row count and column names/types.
 
         Always call this before cryosparc_load_output to understand the
@@ -734,12 +734,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             job = project.find_job(params.job_uid)
             dset = job.load_output(params.output_name)
             cols = [{"name": c, "dtype": str(dset[c].dtype)} for c in dataset_fields(dset)]
-            return to_json({"job_uid": params.job_uid, "output": params.output_name, "num_rows": len(dset), "columns": cols})
+            return jsonable({"job_uid": params.job_uid, "output": params.output_name, "num_rows": len(dset), "columns": cols})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_load_output", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_load_output(params: LoadOutputIn) -> str:
+    @mcp.tool(name="cryosparc_load_output", title="Load Job Output", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_load_output(params: LoadOutputIn) -> Dict[str, Any]:
         """Load paginated data rows from a job output.
 
         Use 'slots' to filter columns and reduce transfer volume.
@@ -755,12 +755,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             total = len(dset)
             col_names = dataset_fields(dset)
             if total > 10000 and not params.slots:
-                return to_json({"warning": "Dataset is large; specify 'slots'.", "num_rows": total, "columns": col_names})
+                return jsonable({"warning": "Dataset is large; specify 'slots'.", "num_rows": total, "columns": col_names})
             start = min(params.offset, total)
             end = min(start + params.limit, total)
             from itertools import islice
             rows = [dict(r) for r in islice(dset.rows(), start, end)]
-            return to_json({
+            return jsonable({
                 "total_rows": total, "offset": start, "count": len(rows),
                 "has_more": end < total, "next_offset": end if end < total else None,
                 "columns": col_names, "rows": rows,
@@ -768,8 +768,8 @@ def register_all_tools(mcp: FastMCP) -> None:
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_list_files", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_list_files(params: ListFilesIn) -> str:
+    @mcp.tool(name="cryosparc_list_files", title="List Files", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_list_files(params: ListFilesIn) -> Dict[str, Any]:
         """List files in a project or job directory.
 
         Useful for finding raw movies, MRC volumes, .cs dataset files,
@@ -783,12 +783,12 @@ def register_all_tools(mcp: FastMCP) -> None:
                 files = job.list_files(params.prefix or "")
             else:
                 files = project.list_files(prefix=params.prefix or "", recursive=params.recursive)
-            return to_json({"files": list(files)})
+            return jsonable({"files": list(files)})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_list_assets", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_list_assets(params: ListAssetsIn) -> str:
+    @mcp.tool(name="cryosparc_list_assets", title="List Job Assets", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_list_assets(params: ListAssetsIn) -> Dict[str, Any]:
         """List image/plot assets stored for a job.
 
         Assets include 2D class previews, FSC curves, diagnostic plots.
@@ -800,12 +800,12 @@ def register_all_tools(mcp: FastMCP) -> None:
             job = project.find_job(params.job_uid)
             assets = job.list_assets()
             items = [{"id": str(a.get("_id", a.get("id", ""))), "filename": a.get("filename", "")} for a in assets]
-            return to_json({"assets": items})
+            return jsonable({"assets": items})
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_download_mrc", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_download_mrc(params: DownloadMrcIn) -> str:
+    @mcp.tool(name="cryosparc_download_mrc", title="Download MRC", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_download_mrc(params: DownloadMrcIn) -> Dict[str, Any]:
         """Download a .mrc file and return its header and data shape.
 
         The MRC is loaded as a NumPy array. This is useful for inspecting
@@ -817,7 +817,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             cs = get_client()
             project = cs.find_project(params.project_uid)
             header, data = project.download_mrc(params.path)
-            return to_json({
+            return jsonable({
                 "path": params.path,
                 "header": {
                     "nx": header.nx, "ny": header.ny, "nz": header.nz,
@@ -829,8 +829,8 @@ def register_all_tools(mcp: FastMCP) -> None:
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_download_file", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_download_file(params: DownloadFileIn) -> str:
+    @mcp.tool(name="cryosparc_download_file", title="Download File", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_download_file(params: DownloadFileIn) -> Dict[str, Any]:
         """Download a file from the project directory to local disk.
 
         Use this to export MRC volumes, .cs files, STAR files, etc.
@@ -841,7 +841,7 @@ def register_all_tools(mcp: FastMCP) -> None:
             cs = get_client()
             project = cs.find_project(params.project_uid)
             result = project.download_file(params.path, target=params.target)
-            return to_json({"path": params.path, "target": str(result)})
+            return jsonable({"path": params.path, "target": str(result)})
         except Exception as e:
             raise tool_error(e) from e
 
@@ -849,8 +849,8 @@ def register_all_tools(mcp: FastMCP) -> None:
     # WORKFLOW & PARAMETER HELPERS
     # ==============================================================
 
-    @mcp.tool(name="cryosparc_parse_workflow", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_parse_workflow(params: ParseWorkflowIn) -> str:
+    @mcp.tool(name="cryosparc_parse_workflow", title="Parse Workflow JSON", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_parse_workflow(params: ParseWorkflowIn) -> Dict[str, Any]:
         """Parse a CryoSPARC workflow JSON file and extract job structure.
 
         Returns a list of jobs with their type, connections, and
@@ -880,15 +880,15 @@ def register_all_tools(mcp: FastMCP) -> None:
                     "connections": connections,
                     "flagged_params": flagged_params,
                 })
-            return to_json({
+            return jsonable({
                 "title": wf.get("title"), "description": wf.get("description", ""),
                 "num_jobs": len(jobs), "jobs": jobs,
             })
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_suggest_params", annotations={"readOnlyHint": True, "destructiveHint": False})
-    async def cryosparc_suggest_params(params: SuggestParamsIn) -> str:
+    @mcp.tool(name="cryosparc_suggest_params", title="Suggest Parameters", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    async def cryosparc_suggest_params(params: SuggestParamsIn) -> Dict[str, Any]:
         """Suggest starting parameters for common target types.
 
         This is not a prediction; it retrieves validated parameters
@@ -910,5 +910,5 @@ def register_all_tools(mcp: FastMCP) -> None:
             }
         }
         if params.target_type in reference:
-            return to_json({"target_type": params.target_type, **reference[params.target_type]})
-        return to_json({"warning": f"No reference for '{params.target_type}'. Available: {list(reference.keys())}"})
+            return jsonable({"target_type": params.target_type, **reference[params.target_type]})
+        return jsonable({"warning": f"No reference for '{params.target_type}'. Available: {list(reference.keys())}"})

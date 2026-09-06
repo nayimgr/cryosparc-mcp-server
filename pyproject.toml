@@ -1,13 +1,15 @@
 [project]
 name = "cryosparc-mcp-server"
-version = "0.4.0"
+version = "0.5.0"
 description = "MCP server for CryoSPARC v5 cryo-EM software — powered by cryosparc-tools"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 dependencies = [
-    # mcp 2.x removed `mcp.server.fastmcp`, which this server imports.
-    "mcp[cli]>=1.26,<2",
+    # FastMCP 4.x targets MCP specification 2026-07-28. The [tasks] extra enables
+    # the io.modelcontextprotocol/tasks extension used by the wait_* tools and the
+    # PDF report; without it those tools degrade to ordinary blocking calls.
+    "fastmcp[tasks]>=4.0",
     # This server targets the cryosparc-tools v5 API (find_projects, find_jobs,
     # job.params/.inputs/.outputs, job_register). Those do not exist in 4.x.
     "cryosparc-tools>=5.0,<6",
@@ -18,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 # Needed by cryosparc_generate_live_report and cryosparc_render_class_averages.
 report = ["matplotlib>=3.7", "numpy>=1.24", "pillow>=10.0"]
-dev = ["pytest>=7.0"]
+dev = ["pytest>=7.0", "anyio>=4.0"]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

@@ -289,12 +289,32 @@ tests/
 └── test_cryosparc_mcp.py    # Offline tests against a mocked CryoSPARC client
 ```
 
+## MCP conformance (specification 2026-07-28)
+
+Built on **FastMCP 4.x** (`fastmcp[tasks]>=4.0`), which targets the current **MCP
+specification 2026-07-28** (stateless core, extensions framework).
+
+- Every tool declares a human-readable **`title`** alongside its machine `name`.
+- **Structured output:** 40 of the 41 tools declare an `outputSchema` and return
+  `structuredContent`, so an agent reads fields instead of re-parsing JSON text.
+  (The exception is `cryosparc_render_class_averages`, which returns an image.)
+- **`openWorldHint: true`** on every tool — they all reach a remote CryoSPARC instance.
+- **MCP Tasks extension** (`io.modelcontextprotocol/tasks`) on the long-running tools —
+  `cryosparc_wait_for_done`, `cryosparc_wait_for_status` and
+  `cryosparc_generate_live_report`. The client receives a durable task handle and polls
+  `tasks/get` instead of holding a request open for hours. Requires the `[tasks]` extra;
+  without it those tools degrade to ordinary blocking calls.
+- **Errors are real MCP errors** (`isError`), never success payloads containing "Error".
+- Transport is **Streamable HTTP** (HTTP+SSE is deprecated), and no deprecated MCP
+  feature (Roots, Sampling, Logging) is used.
+
 ## Compatibility
 
+- **MCP specification**: 2026-07-28 (via FastMCP 4.x)
 - **CryoSPARC**: v5.x
 - **cryosparc-tools**: `>=5.0,<6` — this server uses the v5 API (`find_projects`,
   `find_jobs`, `job.params/.inputs/.outputs`, `job_register`), which does not exist in 4.x
-- **MCP SDK**: `mcp>=1.26,<2` — mcp 2.x removed `mcp.server.fastmcp`
+- **FastMCP**: `fastmcp[tasks]>=4.0`
 - **Python**: 3.10+
 - Optional extra `[report]`: matplotlib, numpy, pillow
 
@@ -303,6 +323,18 @@ tests/
 > tomography jobs), so this server covers single-particle analysis only.
 
 ## Changelog
+
+### 0.5.0 — MCP specification 2026-07-28
+- **Migrated from the official `mcp` SDK v1 to FastMCP 4.x**, moving the server from
+  protocol 2025-11-25 to **2026-07-28**. (`mcp` 2.x renamed `FastMCP` to `MCPServer`
+  and does not expose the tasks extension on its decorator.)
+- **Tool `title`** on all 41 tools; **`openWorldHint: true`** on all 41.
+- **Structured output**: tools now return dictionaries, so the MCP layer emits
+  `structuredContent` with a generated `outputSchema` (40 tools).
+- **MCP Tasks extension** enabled for `cryosparc_wait_for_done`,
+  `cryosparc_wait_for_status` and `cryosparc_generate_live_report`.
+- HTTP host/port now passed as FastMCP 4 transport kwargs; stdio runs with the
+  banner suppressed to keep the JSON-RPC stream clean.
 
 ### 0.4.0 — CryoSPARC v5 migration
 - **Migrated to the cryosparc-tools v5 API.** The code previously called v5-only methods

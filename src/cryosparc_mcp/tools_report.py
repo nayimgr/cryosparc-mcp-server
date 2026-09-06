@@ -12,13 +12,13 @@ from __future__ import annotations
 import io
 import random
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
-from mcp.server.fastmcp import FastMCP
+from fastmcp import FastMCP
 from pydantic import BaseModel, Field, ConfigDict
 
 from .connection import get_client
-from .helpers import dataset_fields, to_json, tool_error
+from .helpers import TASK_MODE, dataset_fields, jsonable, tool_error
 
 
 class GenerateReportIn(BaseModel):
@@ -39,10 +39,10 @@ class GenerateReportIn(BaseModel):
 def register_report_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(
-        name="cryosparc_generate_live_report",
-        annotations={"readOnlyHint": True, "destructiveHint": False},
+        task=TASK_MODE, name="cryosparc_generate_live_report", title="Generate Session Report",
+        annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False},
     )
-    async def cryosparc_generate_live_report(params: GenerateReportIn) -> str:
+    async def cryosparc_generate_live_report(params: GenerateReportIn) -> Dict[str, Any]:
         """Generate a comprehensive PDF report from a CryoSPARC workspace or Live session.
 
         Scans ALL completed (and optionally running/waiting) jobs and reports on every job that has data:
@@ -75,7 +75,7 @@ def register_report_tools(mcp: FastMCP) -> None:
             from matplotlib.backends.backend_pdf import PdfPages
             import numpy as np
         except ImportError:
-            return to_json({"error": "matplotlib and numpy required. Install: pip install matplotlib numpy"})
+            return jsonable({"error": "matplotlib and numpy required. Install: pip install matplotlib numpy"})
 
         try:
             cs = get_client()
@@ -171,7 +171,7 @@ def register_report_tools(mcp: FastMCP) -> None:
                                         "reason": f"{type(job_exc).__name__}: {job_exc}"})
 
             content_pages = [p for p in pages_created if p != "Overview"]
-            return to_json({
+            return jsonable({
                 "success": bool(content_pages),
                 "pdf_path": pdf_path,
                 "total_jobs_scanned": len(target_jobs),

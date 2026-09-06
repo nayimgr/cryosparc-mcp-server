@@ -119,7 +119,7 @@ def test_fmt_error_gives_version_hint_for_attributeerror():
 
 
 def test_tool_error_is_a_tool_error():
-    from mcp.server.fastmcp.exceptions import ToolError
+    from fastmcp.exceptions import ToolError
     assert isinstance(tool_error(ValueError("boom")), ToolError)
 
 
@@ -184,18 +184,18 @@ def test_summarise_reports_no_metrics_gracefully():
 
 @pytest.mark.anyio
 async def test_tool_failure_is_reported_as_mcp_error():
-    from mcp.server.fastmcp import FastMCP
-    from mcp.shared.memory import create_connected_server_and_client_session
+    """Failures must surface as MCP errors (isError), not as success text."""
+    from fastmcp import Client, FastMCP
 
     srv = FastMCP("t")
 
-    @srv.tool(name="boom")
+    @srv.tool(name="boom", title="Boom")
     async def boom() -> str:
         raise tool_error(AttributeError("'CryoSPARC' object has no attribute 'find_projects'"))
 
-    async with create_connected_server_and_client_session(srv._mcp_server) as client:
-        result = await client.call_tool("boom", {})
-        assert result.isError is True, "tool failure must set isError"
+    async with Client(srv) as client:
+        result = await client.call_tool("boom", {}, raise_on_error=False)
+        assert result.is_error is True, "tool failure must set isError"
         assert "cryosparc-tools" in result.content[0].text
 
 
@@ -271,15 +271,67 @@ def test_server_builds_and_registers_tools():
     assert len(names) >= 40
 
 
-def test_http_host_port_go_through_settings():
-    """FastMCP.run() accepts only (transport, mount_path) — host/port must be set
-    on .settings, otherwise HTTP mode raises TypeError."""
+def test_run_forwards_transport_kwargs():
+    """FastMCP 4 forwards extra kwargs (host/port) to the transport."""
     import inspect
 
-    from mcp.server.fastmcp import FastMCP
+    from fastmcp import FastMCP
 
-    assert list(inspect.signature(FastMCP.run).parameters) == ["self", "transport", "mount_path"]
-    srv = FastMCP("t")
-    srv.settings.host = "127.0.0.1"
-    srv.settings.port = 8299
-    assert srv.settings.host == "127.0.0.1" and srv.settings.port == 8299
+    params = inspect.signature(FastMCP.run).parameters
+    assert "transport_kwargs" in params, "host/port are passed as transport kwargs"
+
+
+def test_targets_current_mcp_spec():
+    """The server must speak the current MCP specification revision."""
+    import mcp.types as mcp_types
+
+    assert mcp_types.LATEST_PROTOCOL_VERSION == "2026-07-28"
+
+
+def test_all_tools_have_title_and_open_world_hint():
+    import asyncio
+
+    from cryosparc_mcp.server import create_server
+
+    tools = asyncio.run(create_server().list_tools())
+    missing_title = [t.name for t in tools if not getattr(t, "title", None)]
+    assert not missing_title, f"tools without a title: {missing_title}"
+    # every tool talks to a remote CryoSPARC instance
+    missing_ow = [t.name for t in tools
+                  if not getattr(t.annotations, "open_world_hint", None)]
+    assert not missing_ow, f"tools without openWorldHint: {missing_ow}"
+
+
+def test_data_tools_declare_structured_output():
+    import asyncio
+
+    from cryosparc_mcp.server import create_server
+
+    tools = {t.name: t for t in asyncio.run(create_server().list_tools())}
+    for name in ("cryosparc_job_results", "cryosparc_list_jobs", "cryosparc_find_job"):
+        assert getattr(tools[name], "output_schema", None), f"{name} must declare an outputSchema"
+
+
+def test_long_running_tools_are_tasks():
+    """wait_for_done / wait_for_status / report use the MCP tasks extension."""
+    from cryosparc_mcp.helpers import TASKS_AVAILABLE
+
+    if not TASKS_AVAILABLE:
+        pytest.skip("fastmcp[tasks] not installed")
+    import asyncio
+
+    from cryosparc_mcp.server import create_server
+
+    srv = create_server()
+    names = {t.name for t in asyncio.run(srv.list_tools())}
+    for n in ("cryosparc_wait_for_done", "cryosparc_wait_for_status",
+              "cryosparc_generate_live_report"):
+        assert n in names
+
+
+def test_jsonable_produces_plain_structures():
+    from cryosparc_mcp.helpers import jsonable
+    from datetime import datetime
+
+    out = jsonable({"when": datetime(2026, 9, 6), "n": 1})
+    assert isinstance(out, dict) and out["n"] == 1 and isinstance(out["when"], str)

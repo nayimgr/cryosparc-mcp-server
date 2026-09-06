@@ -16,12 +16,13 @@ import os
 import tempfile
 from typing import Any, Dict, List, Optional
 
-from mcp.server.fastmcp import FastMCP, Image
-from mcp.server.fastmcp.exceptions import ToolError
+from fastmcp import FastMCP
+from fastmcp.utilities.types import Image
+from fastmcp.exceptions import ToolError
 from pydantic import BaseModel, ConfigDict, Field
 
 from .connection import get_client
-from .helpers import col_stats, dataset_fields, params_to_dict, to_json, tool_error
+from .helpers import col_stats, dataset_fields, jsonable, params_to_dict, tool_error
 
 
 class _Base(BaseModel):
@@ -222,11 +223,11 @@ def register_results_tools(mcp: FastMCP) -> None:
     """Register results-interpretation and rendering tools."""
 
     @mcp.tool(
-        name="cryosparc_job_results",
+        name="cryosparc_job_results", title="Job Results & Metrics",
         annotations={"readOnlyHint": True, "destructiveHint": False,
                      "idempotentHint": True, "openWorldHint": True},
     )
-    async def cryosparc_job_results(params: JobResultsIn) -> str:
+    async def cryosparc_job_results(params: JobResultsIn) -> Dict[str, Any]:
         """Extract the KEY METRICS of a job so you can decide what to do next.
 
         Auto-detects what the job produced and returns only decision-relevant numbers:
@@ -244,14 +245,14 @@ def register_results_tools(mcp: FastMCP) -> None:
             cs = get_client()
             project = cs.find_project(params.project_uid)
             job = project.find_job(params.job_uid)
-            return to_json(_summarise_job(job, params.max_classes))
+            return jsonable(_summarise_job(job, params.max_classes))
         except ToolError:
             raise
         except Exception as e:
             raise tool_error(e) from e
 
     @mcp.tool(
-        name="cryosparc_render_class_averages",
+        name="cryosparc_render_class_averages", title="Render 2D Class Averages",
         annotations={"readOnlyHint": True, "destructiveHint": False,
                      "idempotentHint": True, "openWorldHint": True},
     )
