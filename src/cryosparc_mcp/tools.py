@@ -837,7 +837,7 @@ def register_all_tools(mcp: FastMCP) -> None:
         except Exception as e:
             raise tool_error(e) from e
 
-    @mcp.tool(name="cryosparc_download_file", title="Download File", annotations={"openWorldHint": True, "readOnlyHint": True, "destructiveHint": False})
+    @mcp.tool(name="cryosparc_download_file", title="Download File", annotations={"openWorldHint": True, "readOnlyHint": False, "destructiveHint": True})
     async def cryosparc_download_file(params: DownloadFileIn) -> Dict[str, Any]:
         """Download a file from the project directory to local disk.
 
