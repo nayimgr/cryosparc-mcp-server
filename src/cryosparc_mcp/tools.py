@@ -286,8 +286,16 @@ def register_all_tools(mcp: FastMCP) -> None:
         """
         try:
             cs = get_client()
-            projects = list(cs.find_projects())
-            items = [{"uid": p.uid, "title": p.title, "desc": p.desc} for p in projects]
+            # cs.find_projects() sends no access filter, and the v5 server returns
+            # nothing for non-admin users in that case; scope to the current
+            # user like the web UI does.
+            projects, after = [], None
+            while page := cs.api.projects.find(users_with_access=[cs.user.id], after=after, limit=100):
+                projects.extend(page)
+                if len(page) < 100:
+                    break
+                after = page[-1].id
+            items = [{"uid": p.uid, "title": p.title, "desc": p.description} for p in projects]
             return jsonable({"count": len(items), "projects": items})
         except Exception as e:
             raise tool_error(e) from e
